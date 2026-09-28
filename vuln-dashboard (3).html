@@ -1,0 +1,1999 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vulnerability management</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+:root{
+  --bg:#F5F5F7;--card:#FFFFFF;--ink:#1D1D1F;--muted:#6E6E73;--faint:#A1A1A6;
+  --line:rgba(0,0,0,.08);--fill:rgba(118,118,128,.10);--fill2:rgba(118,118,128,.16);
+  --accent:#0071E3;--accent-h:#0077ED;--teal:var(--accent);
+  --crit:#FF3B30;--high:#FF9500;--med:#FFCC00;--low:#32ADE6;--good:#248A3D;--bad:#D70015;
+  --shadow:0 1px 2px rgba(0,0,0,.04),0 6px 24px rgba(0,0,0,.05);
+  --bar:rgba(245,245,247,.72);
+  --r-lg:22px;--r-md:16px;--r-sm:10px;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#000;--card:#1C1C1E;--ink:#F5F5F7;--muted:#98989D;--faint:#636366;
+  --line:rgba(255,255,255,.09);--fill:rgba(118,118,128,.20);--fill2:rgba(118,118,128,.30);
+  --accent:#0A84FF;--accent-h:#409CFF;
+  --crit:#FF453A;--high:#FF9F0A;--med:#FFD60A;--low:#64D2FF;--good:#30D158;--bad:#FF6961;
+  --shadow:none;--bar:rgba(22,22,23,.72);
+}}
+*{box-sizing:border-box}
+html{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display","Inter","Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--ink);-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+body{margin:0;background:var(--bg);font-size:15px;line-height:1.47;letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+.wrap{max-width:1180px;margin:0 auto;padding:0 28px}
+@media(max-width:640px){.wrap{padding:0 16px}}
+:focus-visible{outline:3px solid color-mix(in srgb,var(--accent) 45%,transparent);outline-offset:2px;border-radius:8px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+/* top bar */
+.top{position:sticky;top:0;z-index:5;background:var(--bar);-webkit-backdrop-filter:saturate(180%) blur(20px);backdrop-filter:saturate(180%) blur(20px);border-bottom:1px solid var(--line)}
+.top .wrap{display:flex;align-items:center;gap:10px 20px;min-height:56px;flex-wrap:wrap;padding-top:8px;padding-bottom:8px}
+.brand{display:flex;align-items:center;gap:10px;font-size:15px;font-weight:600;margin:0;white-space:nowrap}
+.brand svg{width:26px;height:26px;display:block}
+.segctl{display:inline-flex;background:var(--fill);border-radius:10px;padding:2px;gap:2px;margin:0 auto;max-width:100%;overflow-x:auto;scrollbar-width:none}
+.tab{appearance:none;border:0;background:none;font:inherit;font-size:13px;font-weight:500;color:var(--ink);padding:6px 16px;border-radius:8px;cursor:pointer;white-space:nowrap;transition:background .2s}
+.tab:hover{background:var(--fill)}
+.segctl{position:relative}
+.tab{position:relative;z-index:1}
+.tab[aria-selected="true"],.tab[aria-selected="true"]:hover{background:none}
+.thumb{position:absolute;top:2px;bottom:2px;left:2px;width:0;border-radius:8px;background:var(--card);box-shadow:0 1px 3px rgba(0,0,0,.12),0 0 0 .5px rgba(0,0,0,.04);pointer-events:none}
+.segctl.ready .thumb{transition:transform .42s cubic-bezier(.32,.72,0,1),width .42s cubic-bezier(.32,.72,0,1)}
+@media (prefers-color-scheme:dark){.thumb{background:#636366}}
+.status{font-size:12.5px;color:var(--muted);white-space:nowrap;display:flex;align-items:center;gap:8px}
+.status .tag{display:inline-flex;align-items:center;gap:6px;background:var(--fill);color:var(--ink);font-weight:500;padding:3px 10px;border-radius:99px}
+.status .tag::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--high)}
+@media(max-width:860px){.segctl{order:3;flex:1 1 100%;margin:0}.status{margin-left:auto}}
+@media(max-width:520px){.status>span:not(.tag){display:none}}
+
+main{padding:40px 0 96px}
+main>.wrap{animation:rise .45s cubic-bezier(.2,.8,.2,1)}
+@keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+h1{font-size:40px;font-weight:700;letter-spacing:-.028em;line-height:1.08;margin:0 0 10px}
+h1.display{font-size:clamp(40px,6vw,64px);letter-spacing:-.035em;line-height:1.02}
+h2{font-size:20px;font-weight:600;letter-spacing:-.02em;margin:0 0 4px}
+h3{font-size:16px;font-weight:600;margin:0 0 8px}
+.kicker{font-size:15px;font-weight:600;color:var(--muted);margin:0 0 8px}
+.lede{color:var(--muted);font-size:19px;line-height:1.42;margin:0 0 28px;max-width:62ch;letter-spacing:-.015em}
+.sub{color:var(--muted);font-size:14px;margin:0 0 16px;max-width:70ch}
+.muted{color:var(--muted)}
+.small{font-size:13px}
+.panel{background:var(--card);border-radius:var(--r-lg);padding:26px 28px;margin-bottom:20px;box-shadow:var(--shadow);overflow:hidden}
+@media(max-width:640px){.panel{padding:20px 18px;border-radius:18px}}
+.grid2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px}
+.grid2>.panel{margin-bottom:0}
+@media(max-width:960px){.grid2{grid-template-columns:1fr}}
+.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.spacer{flex:1}
+.notice{background:color-mix(in srgb,var(--med) 16%,var(--card));border-radius:var(--r-md);padding:14px 18px;margin-bottom:28px;display:flex;gap:14px;align-items:center;flex-wrap:wrap;font-size:14px}
+.notice.err{background:color-mix(in srgb,var(--crit) 12%,var(--card))}
+
+/* hero capsule and severity tiles */
+.capsule{display:flex;height:12px;border-radius:99px;overflow:hidden;gap:3px;margin:0 0 20px;background:var(--fill)}
+.capsule span{display:block;min-width:4px}
+.tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-bottom:16px}
+@media(max-width:820px){.tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.tile{all:unset;box-sizing:border-box;cursor:pointer;background:var(--card);border-radius:var(--r-lg);padding:20px 22px 22px;box-shadow:var(--shadow);transition:transform .25s cubic-bezier(.2,.8,.2,1),box-shadow .25s}
+.tile:hover{transform:translateY(-2px);box-shadow:0 2px 4px rgba(0,0,0,.04),0 14px 34px rgba(0,0,0,.08)}
+.tile:active{transform:scale(.985)}
+.tile:focus-visible{outline:3px solid color-mix(in srgb,var(--accent) 45%,transparent)}
+.tile .l{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600}
+.tile .n{display:block;font-size:48px;font-weight:600;letter-spacing:-.04em;line-height:1.05;margin:14px 0 2px}
+.tile .s{font-size:13px;color:var(--muted)}
+.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-bottom:36px}
+.stats div{background:var(--card);border-radius:var(--r-md);padding:14px 18px;box-shadow:var(--shadow);font-size:13.5px;color:var(--muted)}
+.stats b{display:block;color:var(--ink);font-size:24px;font-weight:600;letter-spacing:-.03em}
+@media(max-width:700px){.stats{grid-template-columns:1fr}}
+
+/* tables */
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%}
+th,td{text-align:left;padding:11px 12px;border-bottom:1px solid var(--line);vertical-align:middle;font-size:14px}
+th{font-weight:500;color:var(--muted);font-size:12.5px;white-space:nowrap}
+tbody tr:last-child td{border-bottom:0}
+tr.total td{font-weight:600;border-top:1px solid var(--line);background:var(--fill)}
+.num{text-align:right}
+td.num{white-space:nowrap}
+.zero{color:var(--faint)}
+.sw{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:7px;vertical-align:1px}
+.sw.Critical{background:var(--crit)}.sw.High{background:var(--high)}.sw.Medium{background:var(--med)}.sw.Low{background:var(--low)}
+.flag{display:inline-block;font-size:11.5px;font-weight:600;padding:2px 8px;border-radius:99px;background:var(--fill);color:var(--ink)}
+.flag.kev{background:color-mix(in srgb,var(--crit) 14%,transparent);color:var(--bad)}
+.mono{font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace;font-size:12.5px;letter-spacing:0}
+tr.click{cursor:pointer}
+tbody tr{transition:background .15s}
+tr.click:hover td,.hov tbody tr:hover td{background:var(--fill)}
+th button.sort{all:unset;cursor:pointer}
+th button.sort:hover{color:var(--ink)}
+th button.sort[data-dir]{color:var(--ink)}
+th button.sort[data-dir]::after{content:attr(data-dir);margin-left:4px;font-size:10px;color:var(--accent)}
+.score{display:flex;align-items:center;gap:10px;min-width:96px}
+.score b{width:24px;text-align:right;font-weight:600}
+.score i{display:block;height:5px;border-radius:99px;background:var(--fill2);flex:1;position:relative;min-width:44px;overflow:hidden}
+.score i::after{content:"";position:absolute;inset:0 auto 0 0;width:var(--w);border-radius:99px;background:var(--accent)}
+.asset{min-width:220px;max-width:320px;overflow-wrap:anywhere}
+
+/* wow */
+.wow{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:14px 0 14px}
+.wow button{all:unset;box-sizing:border-box;cursor:pointer;padding:14px 16px;border-radius:14px;background:var(--fill);transition:background .2s}
+.wow button:hover{background:var(--fill2)}
+.wow button:focus-visible{outline:3px solid color-mix(in srgb,var(--accent) 45%,transparent)}
+.wow .n{font-size:30px;font-weight:600;letter-spacing:-.03em;line-height:1.1;display:block}
+.wow .l{font-size:14px;font-weight:600}
+@media(max-width:460px){.wow{grid-template-columns:1fr}}
+.up{color:var(--bad)}.down{color:var(--good)}
+
+/* trend */
+.trend svg{width:100%;height:auto;display:block}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12.5px;color:var(--muted);margin-top:10px}
+
+/* tribes */
+.tribes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-bottom:28px}
+.tribes button{all:unset;box-sizing:border-box;cursor:pointer;background:var(--card);border-radius:var(--r-lg);padding:22px 24px;box-shadow:var(--shadow);transition:transform .25s cubic-bezier(.2,.8,.2,1)}
+.tribes button:hover{transform:translateY(-2px)}
+.tribes button:focus-visible{outline:3px solid color-mix(in srgb,var(--accent) 45%,transparent)}
+.tribes .t{font-size:15px;font-weight:600;color:var(--muted)}
+.tribes .n{font-size:44px;font-weight:600;letter-spacing:-.04em;line-height:1.1}
+.minibar{display:flex;gap:2px;height:6px;border-radius:99px;overflow:hidden;margin:12px 0 10px;background:var(--fill)}
+.minibar span{display:block}
+@media(max-width:760px){.tribes{grid-template-columns:1fr}}
+.tribehead{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.tribehead h2{font-size:24px}
+
+/* controls */
+.btn{appearance:none;font:inherit;font-weight:500;font-size:14px;padding:8px 18px;border:0;border-radius:99px;background:var(--accent);color:#fff;cursor:pointer;transition:background .2s,transform .1s;white-space:nowrap}
+.btn:hover{background:var(--accent-h)}
+.btn:active{transform:scale(.97)}
+.btn.ghost{background:var(--fill);color:var(--accent)}
+.btn.ghost:hover{background:var(--fill2)}
+.btn.danger{background:var(--fill);color:var(--bad)}
+.btn.danger.armed{background:var(--crit);color:#fff}
+.btn:disabled{opacity:.4;cursor:not-allowed;transform:none}
+.link{all:unset;color:var(--accent);font-size:14px;font-weight:500;cursor:pointer}
+.link:hover{text-decoration:underline}
+.link:focus-visible{outline:3px solid color-mix(in srgb,var(--accent) 45%,transparent)}
+label.f{display:flex;flex-direction:column;gap:6px;font-size:12.5px;font-weight:500;color:var(--muted)}
+input[type=text],input[type=password],input[type=date],input[type=search],select{font:inherit;font-size:14px;padding:9px 12px;border:0;border-radius:var(--r-sm);background:var(--fill);color:var(--ink);min-width:0;transition:box-shadow .15s,background .15s}
+select{appearance:none;-webkit-appearance:none;padding-right:32px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238E8E93' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center}
+input:focus,select:focus{outline:0;background-color:var(--card);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 40%,transparent)}
+.chip{appearance:none;font:inherit;font-size:13.5px;font-weight:500;padding:6px 14px;border:0;border-radius:99px;background:var(--fill);color:var(--ink);cursor:pointer;display:inline-flex;align-items:center;transition:background .2s}
+.chip:hover{background:var(--fill2)}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+.check{display:inline-flex;gap:8px;align-items:center;font-size:14px;cursor:pointer}
+.check input{accent-color:var(--accent);width:16px;height:16px}
+.filters{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;margin-bottom:16px}
+.filters .q{flex:1 1 260px}
+.filters .q input{width:100%}
+.resultbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:8px 0 14px}
+.resultbar>b{font-size:20px;letter-spacing:-.02em}
+.pager{display:flex;gap:10px;align-items:center;justify-content:flex-end;margin-top:14px;font-size:14px;color:var(--muted)}
+
+/* admin */
+.drop{display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;border:1.5px dashed var(--faint);border-radius:var(--r-md);padding:34px 22px;background:var(--fill);cursor:pointer;transition:background .2s,border-color .2s}
+.drop:hover,.drop.over{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 8%,var(--card))}
+.drop b{font-weight:600;color:var(--accent)}
+.drop input{position:absolute;width:1px;height:1px;opacity:0}
+.drop:focus-within{box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 40%,transparent)}
+.maplist{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:6px 20px;margin:10px 0 16px;font-size:14px}
+.maplist .miss{color:var(--faint)}
+.login{max-width:400px;margin:8vh auto 0;text-align:center;padding:36px 32px}
+.login input{width:100%;text-align:center}
+.lock{width:52px;height:52px;border-radius:14px;background:var(--fill);display:grid;place-items:center;margin:0 auto 18px}
+.regtable input,.regtable select{width:100%}
+#toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:rgba(29,29,31,.86);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);color:#fff;padding:11px 20px;border-radius:99px;font-size:14px;font-weight:500;display:none;z-index:10;max-width:90vw}
+#toast.show{display:block;animation:rise .3s cubic-bezier(.2,.8,.2,1)}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+
+/* v3 additions */
+.tile{display:flex;flex-direction:column}
+.tile-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.tile .n{margin:12px 0 0}
+.spark{display:block;width:100%;height:36px;margin-top:14px;overflow:visible}
+.tribes .spark{height:30px;margin-top:10px}
+.delta{font-size:12.5px;font-weight:600;color:var(--muted);background:var(--fill);padding:2px 8px;border-radius:99px;white-space:nowrap}
+.delta.up{color:var(--bad);background:color-mix(in srgb,var(--crit) 12%,transparent)}
+.delta.down{color:var(--good);background:color-mix(in srgb,var(--good) 14%,transparent)}
+.wow .l{display:block;margin-bottom:2px}
+.bigscore{font-size:18px;font-weight:600;letter-spacing:-.02em}
+td.chev{color:var(--faint);font-size:20px;width:20px;padding-left:0;transition:transform .2s,color .2s}
+tr.click:hover td.chev{color:var(--accent);transform:translateX(2px)}
+.clean{font-size:12.5px;font-weight:600;color:var(--good)}
+td .minibar{margin:0;width:100%;min-width:80px}
+
+/* trend interactivity */
+.trend{position:relative}
+.trend .hit{fill:transparent;transition:fill .2s}
+.trend .wk{cursor:default;outline:none}
+.trend .wk.on .hit,.trend .wk:focus-visible .hit{fill:var(--fill)}
+.trend .stack{transform-box:fill-box;transform-origin:50% 100%;animation:grow .8s cubic-bezier(.2,.8,.2,1) both}
+@keyframes grow{from{transform:scaleY(0)}}
+.tip{position:absolute;top:-6px;min-width:180px;background:color-mix(in srgb,var(--card) 88%,transparent);-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);border-radius:14px;padding:12px 14px;box-shadow:0 10px 30px rgba(0,0,0,.14),0 0 0 .5px var(--line);font-size:13px;pointer-events:none;z-index:2;display:flex;flex-direction:column;gap:4px;animation:pop .18s ease-out}
+.tip[hidden]{display:none}
+.tip-total{display:flex;align-items:center;gap:8px;color:var(--muted);margin-bottom:4px}
+.tip-row{display:flex;justify-content:space-between;gap:16px}
+@keyframes pop{from{opacity:0;transform:translateY(4px) scale(.98)}}
+
+/* age bars */
+.hbars{display:flex;flex-direction:column;gap:14px;margin:6px 0 4px}
+.hrow{display:grid;grid-template-columns:110px 1fr 48px;align-items:center;gap:12px;font-size:14px}
+.hl{color:var(--muted)}
+.hn{text-align:right;font-weight:600}
+.htrack{height:14px;background:var(--fill);border-radius:99px;overflow:hidden}
+.hbar{display:flex;gap:2px;height:100%;border-radius:99px;overflow:hidden;transform-origin:0 50%;animation:widen .9s cubic-bezier(.2,.8,.2,1) both}
+.hbar span{display:block;min-width:3px}
+@keyframes widen{from{transform:scaleX(0)}}
+
+/* skeleton */
+.skel{background:linear-gradient(90deg,var(--fill) 25%,var(--fill2) 50%,var(--fill) 75%);background-size:200% 100%;border-radius:12px;animation:shimmer 1.2s linear infinite}
+.tile-skel{height:170px;border-radius:var(--r-lg)}
+@keyframes shimmer{to{background-position:-200% 0}}
+
+/* detail sheet */
+.sheet{position:fixed;inset:0;z-index:30}
+.sheet[hidden]{display:none}
+.sheet-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.24);opacity:0;transition:opacity .35s ease}
+.sheet.open .sheet-backdrop{opacity:1}
+.sheet-panel{position:absolute;top:12px;right:12px;bottom:12px;width:min(480px,calc(100vw - 24px));background:var(--card);border-radius:24px;box-shadow:0 24px 70px rgba(0,0,0,.22),0 0 0 .5px var(--line);display:flex;flex-direction:column;outline:none;transform:translateX(calc(100% + 24px));transition:transform .45s cubic-bezier(.32,.72,0,1)}
+.sheet.open .sheet-panel{transform:none}
+.grabber{display:none}
+.sh-head{display:flex;align-items:center;gap:8px;padding:18px 20px 0 26px}
+.sh-body{flex:1;overflow-y:auto;padding:14px 26px 24px;overscroll-behavior:contain}
+.sh-id{font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace;font-size:26px;font-weight:600;letter-spacing:-.02em;margin:0 0 6px;overflow-wrap:anywhere}
+.sh-foot{display:flex;align-items:center;gap:10px;padding:12px 18px;border-top:1px solid var(--line)}
+.icon-btn{appearance:none;border:0;width:30px;height:30px;border-radius:50%;background:var(--fill);color:var(--muted);display:grid;place-items:center;cursor:pointer;transition:background .2s}
+.icon-btn:hover{background:var(--fill2);color:var(--ink)}
+.sevpill{display:inline-flex;align-items:center;font-size:12.5px;font-weight:600;padding:3px 10px 3px 8px;border-radius:99px;background:var(--fill)}
+.sevpill .sw{margin-right:6px}
+.sh-score{display:grid;grid-template-columns:104px 1fr;gap:20px;align-items:center;background:var(--fill);border-radius:18px;padding:18px;margin-bottom:26px}
+.ring{position:relative;width:104px;height:104px}
+.ring svg{width:100%;height:100%}
+.ring>span{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.ring b{font-size:32px;font-weight:600;letter-spacing:-.04em;line-height:1}
+.ring small{font-size:11.5px;color:var(--muted)}
+.ring-arc{animation:ring 1s cubic-bezier(.2,.8,.2,1) both}
+@keyframes ring{from{stroke-dashoffset:var(--c)}}
+.parts{display:flex;flex-direction:column;gap:9px}
+.part{display:grid;grid-template-columns:1fr 70px 44px;gap:10px;align-items:center;font-size:13px}
+.pl{display:flex;flex-direction:column;font-weight:600;line-height:1.25}
+.pl small{font-weight:400;color:var(--muted);font-size:11.5px}
+.pt{height:5px;border-radius:99px;background:var(--fill2);overflow:hidden}
+.pt i{display:block;height:100%;border-radius:99px;background:var(--accent);transform-origin:0 50%;animation:widen .8s cubic-bezier(.2,.8,.2,1) both}
+.pv{text-align:right;font-weight:600}
+.pv small{color:var(--muted);font-weight:400}
+.sh-h{font-size:13px;font-weight:600;color:var(--muted);margin:0 0 8px}
+.facts{margin:0 0 24px;border-radius:14px;background:var(--fill);padding:2px 16px}
+.facts>div{display:flex;justify-content:space-between;gap:16px;padding:10px 0;border-bottom:1px solid var(--line);font-size:14px}
+.facts>div:last-child{border-bottom:0}
+.facts dt{color:var(--muted);flex-shrink:0}
+.facts dd{margin:0;text-align:right;overflow-wrap:anywhere}
+.others{display:flex;flex-direction:column;border-radius:14px;background:var(--fill);overflow:hidden}
+.others button{all:unset;cursor:pointer;display:grid;grid-template-columns:1fr auto 30px;gap:10px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--line);font-size:13.5px}
+.others button:last-of-type{border-bottom:0}
+.others button:hover{background:var(--fill)}
+.others button:focus-visible{outline:3px solid color-mix(in srgb,var(--accent) 45%,transparent);outline-offset:-3px}
+.others b{text-align:right}
+.others p{margin:0;padding:8px 16px}
+a.btn{text-decoration:none;display:inline-block}
+@media(max-width:640px){
+  .sheet-panel{top:auto;left:0;right:0;bottom:0;width:100%;height:90vh;border-radius:24px 24px 0 0;transform:translateY(100%)}
+  .grabber{display:block;width:38px;height:5px;border-radius:99px;background:var(--fill2);margin:8px auto 0}
+  .sh-head{padding-top:10px}
+  .sh-score{grid-template-columns:1fr;justify-items:center}
+  .parts{width:100%}
+  .hrow{grid-template-columns:92px 1fr 40px}
+}
+@media (prefers-color-scheme:dark){.sheet-backdrop{background:rgba(0,0,0,.5)}.sheet-panel{background:#1C1C1E}}
+@media (prefers-reduced-motion:reduce){.sheet-panel,.sheet-backdrop{transition:none}.skel{animation:none}}
+
+/* widgets */
+:root{--indigo:#5856D6}
+@media (prefers-color-scheme:dark){:root{--indigo:#5E5CE6}}
+.ov-head{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap;margin-bottom:30px}
+.ov-actions{flex-shrink:0}
+.edit-hint{margin:-14px 0 18px;color:var(--muted);font-size:14px}
+.wgrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));grid-auto-rows:200px;grid-auto-flow:row dense;gap:18px}
+@media(max-width:1020px){.wgrid{grid-template-columns:repeat(2,minmax(0,1fr))}.widget.w-wide,.widget.w-xl{grid-column:span 2!important}.widget.w-xl{grid-row:span 3!important}}
+.widget{position:relative;background:var(--card);border-radius:26px;box-shadow:var(--shadow);padding:16px 18px 16px;display:flex;flex-direction:column;overflow:hidden;min-width:0;transition:box-shadow .25s,transform .25s cubic-bezier(.2,.8,.2,1)}
+.widget.w-click{cursor:pointer}
+.wgrid:not(.editing) .widget.w-click:hover{transform:translateY(-2px);box-shadow:0 2px 4px rgba(0,0,0,.04),0 14px 34px rgba(0,0,0,.08)}
+.w-head{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:var(--wc);margin-bottom:10px;min-height:20px}
+.w-head svg{width:15px;height:15px;flex-shrink:0}
+.w-more{all:unset;margin-left:auto;font-size:12.5px;font-weight:500;color:var(--accent);cursor:pointer}
+.w-more:hover{text-decoration:underline}
+.w-more:focus-visible{outline:3px solid color-mix(in srgb,var(--accent) 45%,transparent);border-radius:6px}
+.w-body{flex:1;min-height:0;display:flex;flex-direction:column}
+.w-big{display:block;font-size:40px;font-weight:600;letter-spacing:-.04em;line-height:1.02}
+.w-mid{display:block;font-size:28px;font-weight:600;letter-spacing:-.03em;line-height:1.1}
+.w-subl{display:block;font-size:12.5px;color:var(--muted);line-height:1.35}
+.w-subl .delta{margin-left:4px}
+.w-fill{flex:1}
+.w-meter{display:block;height:6px;border-radius:99px;background:var(--fill2);overflow:hidden;margin:6px 0 5px}
+.w-meter i{display:block;height:100%;border-radius:99px;transform-origin:0 50%;animation:widen .9s cubic-bezier(.2,.8,.2,1) both}
+.w-body .spark{margin-top:8px}
+.w-split{display:grid;grid-template-columns:minmax(110px,.8fr) 1.6fr;gap:18px;align-items:start;height:100%}
+.w-l .w-split{grid-template-columns:1fr;gap:10px}
+.w-inline{display:flex;align-items:center;gap:16px;height:100%}
+.w-stack{display:flex;flex-direction:column;gap:12px;flex:1;min-width:0}
+.ringwrap{position:relative;flex-shrink:0;display:grid;place-items:center}
+.ringwrap>span{position:absolute;inset:0;display:grid;place-items:center}
+.ringwrap b{font-size:20px;font-weight:600;letter-spacing:-.03em}
+.wring{display:block}
+.w-leg{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:6px;font-size:13.5px}
+.w-leg .sw{margin:0}
+.w-three{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.w-three>*{all:unset;box-sizing:border-box;padding:10px 12px;border-radius:14px;background:var(--fill)}
+.w-three>button{cursor:pointer;transition:background .2s}
+.w-three>button:hover{background:var(--fill2)}
+.w-three>button:focus-visible{outline:3px solid color-mix(in srgb,var(--accent) 45%,transparent)}
+.w-list{display:flex;flex-direction:column;min-width:0}
+.w-row{all:unset;box-sizing:border-box;display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:10px;padding:5px 8px;margin:0 -8px;border-radius:12px;cursor:pointer;font-size:13.5px;transition:background .15s}
+.w-row:hover{background:var(--fill)}
+.w-row:focus-visible{outline:3px solid color-mix(in srgb,var(--accent) 45%,transparent);outline-offset:-2px}
+.w-row .sw{margin:0}
+.w-row>b{font-weight:600;text-align:right}
+.w-main{display:flex;flex-direction:column;min-width:0}
+.w-main>*{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.w-rank{width:20px;height:20px;border-radius:50%;background:var(--fill);display:grid;place-items:center;font-size:11.5px;font-weight:600;color:var(--muted)}
+.w-list .w-row:has(.w-mix){grid-template-columns:auto minmax(0,1fr) 90px 40px}
+.tribe-row{grid-template-columns:minmax(0,1fr) 110px 44px 86px!important;padding:10px 8px!important}
+.tribe-row.l{grid-template-columns:minmax(0,1fr) 90px 110px 44px 86px!important;padding:12px 8px!important}
+.tribe-row .delta{justify-self:end}
+.w-mix .minibar,.w-sp .spark{margin:0}
+.w-mix .minibar{width:100%}
+.w-arrow{font-weight:400;color:var(--accent);font-family:"SF Mono",ui-monospace,Menlo,monospace;font-size:12px}
+.w-fixes{text-align:right;display:flex;flex-direction:column;align-items:flex-end}
+.w-fixes b{font-size:17px;font-weight:600;letter-spacing:-.02em;line-height:1.1}
+.w-table th,.w-table td{padding:8px 10px}
+.capsule.sm{height:8px;margin:0 0 14px}
+.sevgrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;flex:1;min-height:0}
+.sevgrid.l{grid-template-columns:repeat(2,minmax(0,1fr))}
+.sevcell{all:unset;box-sizing:border-box;cursor:pointer;display:flex;flex-direction:column;padding:10px 12px 8px;border-radius:16px;background:var(--fill);transition:background .2s;min-width:0}
+.sevcell:hover{background:var(--fill2)}
+.sevcell:focus-visible{outline:3px solid color-mix(in srgb,var(--accent) 45%,transparent)}
+.sevcell .l{display:flex;align-items:center;font-size:13px;font-weight:600}
+.sevcell .w-big{font-size:34px;margin-top:6px}
+.sevgrid.l .sevcell .w-big{font-size:40px;margin-top:10px}
+.sevcell .spark{margin-top:auto;height:26px}
+.w-m .trend svg,.w-l .trend svg,.w-xl .trend svg{max-height:100%}
+.widget .trend{height:100%;display:flex;flex-direction:column}
+.widget .trend svg{flex:1;min-height:0}
+.widget .hbars{gap:10px;margin:2px 0}
+.w-l .hbars{gap:22px;margin:10px 0}
+.w-empty{grid-column:1/-1;grid-row:span 1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;border:1.5px dashed var(--faint);border-radius:26px;color:var(--muted)}
+.w-empty p{margin:0}
+
+/* edit mode */
+.wgrid.editing .widget{cursor:grab;animation:wiggle .3s ease-in-out infinite alternate}
+.wgrid.editing .widget:nth-child(2n){animation-delay:-.15s;animation-direction:alternate-reverse}
+.wgrid.editing .widget:nth-child(3n){animation-duration:.34s}
+.wgrid.editing .w-body,.wgrid.editing .w-head{pointer-events:none;user-select:none}
+.wgrid.editing .widget.dragging{opacity:.35;animation:none}
+.wgrid.editing .widget:hover,.wgrid.editing .widget:focus-within{animation-play-state:paused}
+@keyframes wiggle{from{transform:rotate(-.3deg)}to{transform:rotate(.3deg)}}
+.w-remove{position:absolute;top:10px;left:10px;width:24px;height:24px;border-radius:50%;border:0;background:var(--muted);color:var(--card);display:grid;place-items:center;cursor:pointer;z-index:2;box-shadow:0 2px 6px rgba(0,0,0,.2);transition:transform .15s,background .15s}
+.w-remove:hover{background:var(--crit);color:#fff;transform:scale(1.1)}
+.wgrid.editing .w-head{padding-left:26px}
+.w-tools{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);display:flex;gap:2px;padding:3px;border-radius:99px;background:color-mix(in srgb,var(--card) 80%,transparent);-webkit-backdrop-filter:blur(16px) saturate(180%);backdrop-filter:blur(16px) saturate(180%);box-shadow:0 4px 16px rgba(0,0,0,.14),0 0 0 .5px var(--line);z-index:2}
+.w-tools button{appearance:none;border:0;background:none;font:inherit;font-size:12px;font-weight:600;color:var(--ink);min-width:28px;height:26px;padding:0 8px;border-radius:99px;cursor:pointer}
+.w-tools button:hover{background:var(--fill)}
+.w-tools button[aria-pressed="true"]{background:var(--accent);color:#fff}
+@media (prefers-reduced-motion:reduce){.wgrid.editing .widget{animation:none}}
+
+/* gallery modal */
+.modal{position:fixed;inset:0;z-index:30;display:grid;place-items:center}
+.modal[hidden]{display:none}
+.modal.open .sheet-backdrop{opacity:1}
+.modal-panel{position:relative;width:min(760px,calc(100vw - 40px));max-height:min(760px,calc(100vh - 60px));background:var(--card);border-radius:26px;box-shadow:0 30px 80px rgba(0,0,0,.25),0 0 0 .5px var(--line);display:flex;flex-direction:column;outline:none;opacity:0;transform:scale(.96) translateY(8px);transition:opacity .25s ease,transform .35s cubic-bezier(.32,.72,0,1)}
+.modal.open .modal-panel{opacity:1;transform:none}
+.gal{overflow-y:auto;padding:0 20px 22px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.gal-card{display:grid;grid-template-columns:auto 1fr auto;gap:14px;align-items:center;padding:14px 16px;border-radius:18px;background:var(--fill)}
+.gal-ic{width:36px;height:36px;border-radius:10px;background:var(--card);display:grid;place-items:center}
+.gal-ic svg{width:18px;height:18px}
+.gal-txt{display:flex;flex-direction:column;gap:2px;min-width:0}
+.gal-txt b{font-weight:600;font-size:14.5px}
+.gal-added{font-size:13px;color:var(--muted);font-weight:500;padding:0 6px}
+@media (prefers-color-scheme:dark){.modal-panel{background:#1C1C1E}}
+
+/* triage */
+.sevgrid.tri{grid-template-columns:repeat(3,minmax(0,1fr))}
+.sevgrid.tri.l{grid-template-columns:1fr}
+.sevgrid.tri.l .sevcell{flex-direction:row;align-items:center;gap:14px;flex-wrap:wrap}
+.tier-desc{margin-top:2px;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
+.tier-act .w-big{color:var(--bad)}
+.tier-monitor .w-big{color:var(--muted)}
+.tb-head{display:grid;grid-template-columns:minmax(0,1fr) 64px 56px 76px;gap:10px;font-size:11.5px;color:var(--muted);padding:0 0 2px}
+.tb-head.l{grid-template-columns:minmax(0,1fr) 100px 64px 56px 76px}
+.tb-head span{text-align:right}
+.tribe-row{grid-template-columns:minmax(0,1fr) 64px 56px 76px!important;padding:9px 8px!important}
+.tribe-row.l{grid-template-columns:minmax(0,1fr) 100px 64px 56px 76px!important;padding:12px 8px!important}
+.tb-act{color:var(--bad);font-weight:600;text-align:right}
+.tb-open{color:var(--muted);text-align:right;font-size:13px}
+.n-sub{font-size:15px;font-weight:500;letter-spacing:-.01em;color:var(--muted)}
+
+/* quarterly */
+.segctl.mini{margin:0;padding:2px}
+.segctl.mini .tab{padding:6px 12px}
+.segctl.mini .tab[aria-pressed="true"]{background:var(--card);box-shadow:0 1px 3px rgba(0,0,0,.12),0 0 0 .5px rgba(0,0,0,.04)}
+@media (prefers-color-scheme:dark){.segctl.mini .tab[aria-pressed="true"]{background:#636366}}
+.qpicker{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 20px}
+.qsummary p{font-size:18px;line-height:1.55;letter-spacing:-.012em;margin:8px 0 0;max-width:90ch}
+.qsummary b{font-weight:600}
+.qkpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-bottom:16px}
+.qkpi{background:var(--card);border-radius:22px;padding:20px 22px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:6px}
+.qv{font-size:44px;font-weight:600;letter-spacing:-.04em;line-height:1.05}
+.qv small{font-size:20px;font-weight:500;color:var(--muted);letter-spacing:-.01em}
+.qd{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.qstrip{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));background:var(--card);border-radius:18px;box-shadow:var(--shadow);margin-bottom:20px}
+.qstrip>div{padding:14px 20px;border-right:1px solid var(--line)}
+.qstrip>div:last-child{border-right:0}
+.qstrip b{display:block;font-size:22px;font-weight:600;letter-spacing:-.03em;margin-top:2px}
+@media(max-width:1000px){.qkpis{grid-template-columns:repeat(2,1fr)}.qstrip{grid-template-columns:repeat(2,1fr)}}
+.qstatus{font-size:12.5px;font-weight:600;padding:3px 10px;border-radius:99px;background:var(--fill);white-space:nowrap}
+.qstatus.good{color:var(--good);background:color-mix(in srgb,var(--good) 14%,transparent)}
+.qstatus.bad{color:var(--bad);background:color-mix(in srgb,var(--crit) 12%,transparent)}
+.qcol{background:color-mix(in srgb,var(--accent) 6%,transparent)}
+.drawline{stroke-dasharray:3000;stroke-dashoffset:3000;animation:draw 1.4s cubic-bezier(.4,0,.2,1) forwards}
+@keyframes draw{to{stroke-dashoffset:0}}
+@media (prefers-reduced-motion:reduce){.drawline{stroke-dashoffset:0;animation:none}}
+@media print{
+  .top,.no-print,.notice,#toast{display:none!important}
+  body{background:#fff}
+  main{padding:0}
+  .panel,.qkpi,.qstrip{box-shadow:none!important;border:1px solid #ddd;break-inside:avoid}
+  .drawline{stroke-dashoffset:0;animation:none}
+  .trend .stack{animation:none}
+  main>.wrap{animation:none}
+}
+.live{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--good);margin-left:7px;box-shadow:0 0 0 3px color-mix(in srgb,var(--good) 25%,transparent)}
+
+/* quarter widget */
+.qw-top{display:flex;align-items:baseline;gap:8px;margin:-2px 0 12px}
+.qw-top b{font-size:15px;font-weight:600}
+.qw-top .w-more{margin-left:auto}
+.qw-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;flex:1}
+.qw-grid.wide{grid-template-columns:repeat(6,minmax(0,1fr))}
+.qw-cell{background:var(--fill);border-radius:14px;padding:10px 12px;display:flex;flex-direction:column;gap:3px;min-width:0}
+.qw-cell .w-mid{font-size:22px;white-space:nowrap}
+.qw-cell small{font-size:13px;color:var(--muted);font-weight:500;margin-left:1px}
+.qw-cell .delta{align-self:flex-start;font-size:11.5px}
+.qw-arrow{color:var(--faint);font-weight:400;margin:0 3px;font-size:16px}
+.w-head .w-more + .w-more{margin-left:10px}
+
+/* leadership report overlay */
+.report{position:fixed;inset:0;z-index:25}
+.report[hidden]{display:none}
+.report-panel{position:absolute;inset:0;background:var(--bg);overflow-y:auto;outline:none;opacity:0;transform:translateY(16px);transition:opacity .25s ease,transform .4s cubic-bezier(.32,.72,0,1)}
+.report.open .report-panel{opacity:1;transform:none}
+.report-bar{position:sticky;top:0;z-index:2;background:var(--bar);-webkit-backdrop-filter:saturate(180%) blur(20px);backdrop-filter:saturate(180%) blur(20px);border-bottom:1px solid var(--line)}
+.report-bar .wrap{min-height:56px}
+#reportBody{padding-top:36px;padding-bottom:80px}
+body.report-open{overflow:hidden}
+@media print{
+  body.report-open>header,body.report-open>main,body.report-open .sheet{display:none!important}
+  body.report-open{overflow:visible}
+  .report,.report-panel{position:static!important;overflow:visible!important;opacity:1!important;transform:none!important;background:#fff}
+  #reportBody{padding:0}
+}
+@media (prefers-reduced-motion:reduce){.report-panel{transition:none}}
+</style>
+</head>
+<body>
+<header class="top"><div class="wrap">
+  <p class="brand"><svg viewBox="0 0 26 26" aria-hidden="true"><rect width="26" height="26" rx="7" fill="var(--accent)"/><path d="M13 5.5l6 2.3v4.6c0 3.9-2.5 6.9-6 8.1-3.5-1.2-6-4.2-6-8.1V7.8l6-2.3z" fill="#fff" fill-opacity=".95"/><path d="M10.2 13.1l2 2 3.8-4" fill="none" stroke="var(--accent)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>Vulnerability management</p>
+  <nav class="segctl" role="tablist" aria-label="Sections" id="tabs"></nav>
+  <div class="status" id="status">Loading</div>
+</div></header>
+<main><div class="wrap" id="main" aria-busy="true">
+  <div class="skel" style="width:180px;height:16px"></div><div class="skel" style="width:min(640px,90%);height:58px;margin:14px 0 28px"></div>
+  <div class="skel" style="height:12px;margin-bottom:20px;border-radius:99px"></div>
+  <div class="tiles"><div class="skel tile-skel"></div><div class="skel tile-skel"></div><div class="skel tile-skel"></div><div class="skel tile-skel"></div></div>
+</div></main>
+<div class="report" id="report" hidden><div class="report-panel" id="reportPanel" role="dialog" aria-modal="true" aria-label="Leadership report" tabindex="-1">
+  <div class="report-bar no-print"><div class="wrap row"><button class="link" data-action="closereport">‹ Back to dashboard</button><span class="spacer"></span>
+    <button class="btn ghost" data-action="qcsv">Download CSV</button><button class="btn" data-action="qprint">Print or save PDF</button></div></div>
+  <div class="wrap" id="reportBody"></div></div></div>
+<div class="modal" id="gallery" hidden><div class="sheet-backdrop" data-action="closegallery"></div><div class="modal-panel" id="galleryPanel" role="dialog" aria-modal="true" aria-labelledby="galTitle" tabindex="-1"></div></div>
+<div class="sheet" id="sheet" hidden><div class="sheet-backdrop" data-action="closesheet"></div><aside class="sheet-panel" id="sheetPanel" role="dialog" aria-modal="true" aria-labelledby="sheetTitle" tabindex="-1"></aside></div>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+'use strict';
+/* =========================================================
+   Configuration
+   ========================================================= */
+// false: uploads are stored per signed-in user of this artifact.
+// true:  uploads are visible to everyone who opens a published copy. Vulnerability
+//        data is sensitive, so only enable this for a copy restricted to your team.
+const SHARED = false;
+const NS = 'vmd:';
+const DEFAULT_PW = 'vmd-admin';
+const TRIBES = ['B2B', 'CDX/Omni', 'SFO'];
+const SEVS = ['Critical', 'High', 'Medium', 'Low'];
+const SOURCES = ['WIZ', 'Container'];
+const SOURCE_LABEL = { WIZ: 'WIZ cloud', Container: 'Container images' };
+// Placeholder registry: replace with your real APM IDs in Admin > Application registry
+const DEFAULT_REGISTRY = [
+  { apm: 'APM0101', app: 'Partner Portal', tribe: 'B2B' },
+  { apm: 'APM0102', app: 'Order Gateway', tribe: 'B2B' },
+  { apm: 'APM0103', app: 'Billing Engine', tribe: 'B2B' },
+  { apm: 'APM0201', app: 'Omni Checkout', tribe: 'CDX/Omni' },
+  { apm: 'APM0202', app: 'Customer Profile', tribe: 'CDX/Omni' },
+  { apm: 'APM0203', app: 'Mobile BFF', tribe: 'CDX/Omni' },
+  { apm: 'APM0204', app: 'Notification Hub', tribe: 'CDX/Omni' },
+  { apm: 'APM0301', app: 'Store Operations', tribe: 'SFO' },
+  { apm: 'APM0302', app: 'Inventory Sync', tribe: 'SFO' },
+  { apm: 'APM0303', app: 'Field Scheduler', tribe: 'SFO' },
+];
+
+// Remediation SLA targets in days, used for quarterly SLA compliance (critical and high)
+const SLA_DAYS = { Critical: 15, High: 30, Medium: 90, Low: 180 };
+// Default overview widgets (users can customise this in Edit widgets)
+const DEFAULT_LAYOUT = [
+  { id: 'triage', size: 'wide' },
+  { id: 'kev', size: 's' }, { id: 'newcrit', size: 's' }, { id: 'fixrate', size: 's' }, { id: 'aging', size: 's' },
+  { id: 'quarter', size: 'm' }, { id: 'tribes', size: 'm' },
+  { id: 'top', size: 'xl' },
+];
+
+/* =========================================================
+   Priority score (0 to 100)
+   severity weight + CVSS x 2 + exploit 15 + CISA KEV 20 + age (1 pt per 9 days, max 10)
+   ========================================================= */
+const SEV_W = { Critical: 35, High: 25, Medium: 12, Low: 4 };
+const SEV_CVSS_FALLBACK = { Critical: 9.5, High: 7.5, Medium: 5, Low: 2 };
+function scoreParts(v) {
+  const cv = v.cvss != null ? Math.min(10, Math.max(0, v.cvss)) : SEV_CVSS_FALLBACK[v.sev];
+  return [
+    { label: 'Severity', val: SEV_W[v.sev] || 4, max: 35, note: v.sev },
+    { label: 'CVSS', val: cv * 2, max: 20, note: v.cvss != null ? 'Base score ' + v.cvss : 'Estimated from severity' },
+    { label: 'Known exploit', val: v.exp ? 15 : 0, max: 15, note: v.exp ? 'Public exploit available' : 'None known' },
+    { label: 'CISA KEV', val: v.kev ? 20 : 0, max: 20, note: v.kev ? 'Actively exploited' : 'Not listed' },
+    { label: 'Age', val: Math.min(10, (v.age || 0) / 9), max: 10, note: (v.age || 0) + ' days open' },
+  ];
+}
+function scoreOf(v) {
+  return Math.round(Math.min(100, scoreParts(v).reduce((a, x) => a + x.val, 0)));
+}
+
+/* =========================================================
+   Utilities
+   ========================================================= */
+const DAY = 864e5;
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const normH = h => String(h ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+const fmt = n => Number(n || 0).toLocaleString('en-IN');
+// Short Indian formats for big headline numbers: 3.2L, 1.2Cr. Full numbers below 1 lakh.
+const fmtC = n => { n = Number(n || 0); if (Math.abs(n) < 1e5) return fmt(n); const cr = n >= 1e7; const v = n / (cr ? 1e7 : 1e5); return (v >= 100 ? Math.round(v) : +v.toFixed(1)).toLocaleString('en-IN') + (cr ? 'Cr' : 'L'); };
+// Triage groups. "Fix available" is ignored when the reports carry no fixed-version data at all.
+const TIERS = [
+  { id: 'act', label: 'Act now', color: 'var(--crit)', desc: 'On CISA KEV, or exploitable with a fix available.', long: 'On the CISA KEV list, or critical/high with a public exploit and a fix available.' },
+  { id: 'plan', label: 'Plan', color: 'var(--high)', desc: 'Critical or high with a fix. Schedule it.', long: 'Critical or high with a fix available but no known exploit. Schedule the upgrade.' },
+  { id: 'monitor', label: 'Monitor', color: 'var(--low)', desc: 'Low risk, or waiting on a vendor fix.', long: 'Medium or low severity, or no fix released yet. Not in your control, so it is tracked but not counted against you.' },
+];
+const TIER_LABEL = Object.fromEntries(TIERS.map(t => [t.id, t.label]));
+function tierOf(v, hasFix) {
+  const hi = v.sev === 'Critical' || v.sev === 'High', fixable = !hasFix || !!v.fix;
+  if (v.kev || (v.exp && hi && fixable)) return 'act';
+  if (hi && fixable) return 'plan';
+  return 'monitor';
+}
+const localIso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+const parseYmd = s => { const [y, m, d] = String(s).slice(0, 10).split('-').map(Number); return new Date(y, (m || 1) - 1, d || 1); };
+function mondayOf(d) { const x = new Date(d); x.setHours(0, 0, 0, 0); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return localIso(x); }
+const TODAY = (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; })();
+const ageDays = ymd => ymd ? Math.max(0, Math.round((TODAY - parseYmd(ymd)) / DAY)) : 0;
+const fmtWeek = ymd => parseYmd(ymd).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+const fmtWeekLong = ymd => parseYmd(ymd).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+const keyOf = r => (r.id + '|' + r.asset + '|' + r.pkg).toLowerCase();
+const appKey = v => v.apm || ('app:' + v.app);
+const sevCounts = list => { const c = { Critical: 0, High: 0, Medium: 0, Low: 0 }; for (const v of list) c[v.sev]++; return c; };
+function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+
+/* =========================================================
+   Parsing: header detection, column mapping, normalisation
+   ========================================================= */
+const CVE_RE = /(CVE-\d{4}-\d{4,}|GHSA(?:-[a-z0-9]{4}){3})/i;
+const ALIASES = {
+  cve: ['cve', 'cveid', 'cves', 'vulnerabilityid', 'vulnid', 'vulnerability', 'name', 'externalid', 'advisory', 'id'],
+  sev: ['severity', 'cvssseverity', 'cvsseverity', 'vendorseverity', 'vulnerabilityseverity', 'severitylevel', 'sev', 'riskrating', 'risk'],
+  cvss: ['cvss', 'cvssscore', 'score', 'basescore', 'cvssv3score', 'cvss3score', 'cvss3', 'cvssv3', 'cvssbasescore', 'nvdscore'],
+  asset: ['asset', 'assetname', 'resourcename', 'resource', 'image', 'imagename', 'containerimage', 'repository', 'repo', 'hostname', 'host', 'workload', 'target', 'imageref', 'resourceid'],
+  exp: ['exploit', 'hasexploit', 'exploitavailable', 'exploitable', 'publicexploit', 'knownexploit', 'exploitexists', 'exploitstatus', 'exploitability'],
+  kev: ['kev', 'cisakev', 'hascisakevexploit', 'iskev', 'cisakevexploit', 'inkev', 'cisaknownexploited', 'knownexploitedvulnerability', 'cisa'],
+  first: ['firstseen', 'firstdetected', 'firstdetectedat', 'firstfound', 'firstobserved', 'detected', 'detectedat', 'discovered', 'discoverydate', 'dateidentified'],
+  tribe: ['tribe', 'tribename', 'businessunit', 'team'],
+  app: ['application', 'applicationname', 'app', 'appname', 'service', 'servicename'],
+  apm: ['apmid', 'apm', 'apmcode', 'apmnumber', 'applicationid', 'appid'],
+  pkg: ['package', 'packagename', 'detailedname', 'component', 'library', 'affectedpackage', 'pkgname'],
+  ver: ['installedversion', 'version', 'packageversion', 'currentversion'],
+  fix: ['fixedversion', 'fixversion', 'fixedin', 'recommendedversion', 'remediation', 'fix', 'fixavailable'],
+  tags: ['tags', 'resourcetags', 'labels', 'imagelabels', 'resourcelabels'],
+  title: ['title', 'description', 'summary', 'vulnerabilitytitle'],
+};
+const FIELD_LABEL = { cve: 'Vulnerability ID', sev: 'Severity', cvss: 'CVSS score', asset: 'Asset', exp: 'Exploit available', kev: 'CISA KEV', first: 'First seen', tribe: 'Tribe', app: 'Application', apm: 'APM ID', pkg: 'Package', ver: 'Installed version', fix: 'Fixed version', tags: 'Tags', title: 'Title' };
+const ALL_ALIAS = new Set(Object.values(ALIASES).flat());
+
+function detectHeader(rows) {
+  let best = 0, bs = -1;
+  for (let i = 0; i < Math.min(20, rows.length); i++) {
+    const s = rows[i].filter(c => ALL_ALIAS.has(normH(c))).length;
+    if (s > bs) { bs = s; best = i; }
+  }
+  return best;
+}
+function buildMapping(header, data) {
+  const H = header.map(normH), used = new Set(), map = {};
+  const sample = data.slice(0, 200);
+  let bestC = -1, bestN = 0;
+  header.forEach((_, i) => {
+    let n = 0; for (const r of sample) if (CVE_RE.test(String(r[i] ?? ''))) n++;
+    if (n > bestN) { bestN = n; bestC = i; }
+  });
+  if (bestC >= 0 && bestN >= Math.max(1, sample.length * 0.2)) { map.cve = bestC; used.add(bestC); }
+  for (const f of Object.keys(ALIASES)) {
+    if (map[f] != null) continue;
+    for (const a of ALIASES[f]) {
+      const i = H.findIndex((h, idx) => h === a && !used.has(idx));
+      if (i >= 0) { map[f] = i; used.add(i); break; }
+    }
+  }
+  return map;
+}
+function normSev(t) {
+  t = String(t || '').toLowerCase();
+  if (t.includes('crit')) return 'Critical';
+  if (t.includes('high') || t.includes('important')) return 'High';
+  if (t.includes('med') || t.includes('moderate')) return 'Medium';
+  if (t.includes('low') || t.includes('negligible') || t.includes('info') || t.includes('minimal')) return 'Low';
+  return '';
+}
+function sevFromCvss(c) { if (c == null) return ''; return c >= 9 ? 'Critical' : c >= 7 ? 'High' : c >= 4 ? 'Medium' : 'Low'; }
+function truthy(v) {
+  if (v === true) return true;
+  if (typeof v === 'number') return v > 0;
+  const t = String(v ?? '').trim().toLowerCase();
+  if (!t) return false;
+  if (/^(no|false|n$|0|none|n\/a|na$|unknown|not|null|-|unproven)/.test(t)) return false;
+  return true;
+}
+function normTribe(t) {
+  const s = String(t || '').trim(); if (!s) return '';
+  const l = s.toLowerCase();
+  if (l.includes('b2b')) return 'B2B';
+  if (/cdx|omni/.test(l)) return 'CDX/Omni';
+  if (/\bsfo\b/.test(l)) return 'SFO';
+  return s.slice(0, 40);
+}
+function normApm(v, isCol) {
+  const t = String(v ?? '');
+  let m = t.match(/APM[\s_:#-]*(\d{3,})/i) || t.match(/apm[-_ ]?id[\s:=]*(\d{3,})/i);
+  if (m) return 'APM' + m[1];
+  if (isCol && /^\d{3,}$/.test(t.trim())) return 'APM' + t.trim();
+  return '';
+}
+function parseDateLoose(v) {
+  if (v == null || v === '') return '';
+  if (v instanceof Date) return isNaN(v) ? '' : localIso(v);
+  if (typeof v === 'number') return (v > 20000 && v < 80000) ? new Date(Math.round((v - 25569) * DAY)).toISOString().slice(0, 10) : '';
+  const t = String(v).trim();
+  let m = t.match(/^(\d{4})-(\d{2})-(\d{2})/); if (m) return m[0];
+  m = t.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})/);
+  if (m) {
+    let a = +m[1], b = +m[2], y = +m[3], mo, d;
+    if (a > 12) { d = a; mo = b; } else { mo = a; d = b; }
+    return localIso(new Date(y, mo - 1, d));
+  }
+  const d = new Date(t); return isNaN(d) ? '' : localIso(d);
+}
+function normalizeRow(r, map) {
+  const c = f => map[f] == null ? '' : r[map[f]];
+  const s = f => String(c(f) ?? '').trim();
+  const raw = s('cve'); if (!raw) return null;
+  const m = raw.match(CVE_RE);
+  const id = m ? m[0].toUpperCase() : raw.slice(0, 80);
+  let cvss = parseFloat(c('cvss'));
+  cvss = (isNaN(cvss) || cvss < 0 || cvss > 10) ? null : Math.round(cvss * 10) / 10;
+  return {
+    id, cvss,
+    sev: normSev(s('sev')) || sevFromCvss(cvss) || 'Low',
+    asset: s('asset').slice(0, 200) || '(unspecified)',
+    exp: truthy(c('exp')), kev: truthy(c('kev')),
+    first: parseDateLoose(c('first')),
+    tribe: normTribe(s('tribe')), app: s('app').slice(0, 80),
+    apm: normApm(s('apm'), true) || normApm(s('tags')) || normApm(s('asset')) || normApm(s('app')),
+    pkg: s('pkg').slice(0, 120), ver: s('ver').slice(0, 60), fix: s('fix').slice(0, 80), title: s('title').slice(0, 200),
+  };
+}
+function parseAoa(aoa) {
+  const rows = (aoa || []).filter(r => Array.isArray(r) && r.some(c => String(c ?? '').trim() !== ''));
+  if (!rows.length) return { error: 'The file has no rows. Check that you exported the findings sheet, not a summary.' };
+  const hi = detectHeader(rows);
+  const header = rows[hi].map(h => String(h ?? '').trim());
+  const data = rows.slice(hi + 1);
+  const map = buildMapping(header, data);
+  if (map.cve == null) return { error: 'No vulnerability ID column found. The file needs a column such as "CVE", "Vulnerability ID" or "Name" containing CVE IDs.' };
+  const out = [], seen = new Set(); let skipped = 0, dup = 0;
+  for (const r of data) {
+    const n = normalizeRow(r, map);
+    if (!n) { skipped++; continue; }
+    const k = keyOf(n);
+    if (seen.has(k)) { dup++; continue; }
+    seen.add(k); out.push(n);
+  }
+  const mapping = {}; for (const f in ALIASES) mapping[f] = map[f] != null ? header[map[f]] : null;
+  return { rows: out, mapping, skipped, dup, total: data.length, headerRow: hi + 1 };
+}
+async function readFileToAoa(file) {
+  const buf = await file.arrayBuffer();
+  if (/\.(xlsx|xlsm|xls)$/i.test(file.name)) {
+    if (!window.XLSX) throw new Error('The spreadsheet library did not load. Check your network and reload.');
+    const wb = XLSX.read(buf, { type: 'array' });
+    let best = null, bestN = -1;
+    for (const n of wb.SheetNames) {
+      const aoa = XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: true, defval: '' });
+      if (aoa.length > bestN) { bestN = aoa.length; best = aoa; }
+    }
+    return best || [];
+  }
+  if (!window.Papa) throw new Error('The CSV library did not load. Check your network and reload.');
+  const text = new TextDecoder().decode(buf).replace(/^\ufeff/, '');
+  return Papa.parse(text, { skipEmptyLines: true }).data;
+}
+
+/* =========================================================
+   Sample data: generated as raw WIZ / container exports, then
+   run through the same parser as real uploads
+   ========================================================= */
+const WIZ_HEAD = ['Name', 'CVSSSeverity', 'Score', 'HasExploit', 'HasCisaKevExploit', 'FirstDetected', 'ResourceName', 'ResourceType', 'ResourceTags', 'DetailedName', 'Version', 'FixedVersion', 'SubscriptionName'];
+const CTR_HEAD = ['Vulnerability ID', 'Severity', 'CVSS Score', 'Image', 'Package', 'Installed Version', 'Fixed Version', 'Exploit Available', 'CISA KEV', 'First Seen', 'Tribe', 'Application', 'APM ID'];
+function makeMock() {
+  const rnd = mulberry32(20260927);
+  const pick = a => a[Math.floor(rnd() * a.length)];
+  const between = (a, b) => a + rnd() * (b - a);
+  const pkgs = [['openssl', '3.0.13', '3.0.15'], ['glibc', '2.35-0ubuntu3.6', '2.35-0ubuntu3.8'], ['log4j-core', '2.17.0', '2.17.2'], ['spring-web', '5.3.31', '5.3.39'], ['jackson-databind', '2.13.4', '2.15.4'], ['netty-codec-http2', '4.1.94', '4.1.108'], ['curl', '7.88.1', '8.4.0'], ['libxml2', '2.9.14', '2.11.7'], ['nghttp2', '1.51.0', '1.57.0'], ['zlib', '1.2.13', '1.3.1'], ['express', '4.18.2', '4.19.2'], ['urllib3', '1.26.15', '1.26.19'], ['requests', '2.28.2', '2.32.0'], ['golang.org/x/net', '0.15.0', '0.23.0'], ['busybox', '1.36.0', '1.36.1'], ['linux-kernel', '5.15.0-91', '5.15.0-105'], ['sudo', '1.9.9', '1.9.15'], ['openssh', '8.9p1', '9.8p1'], ['tomcat-embed-core', '9.0.80', '9.0.86'], ['pillow', '9.5.0', '10.3.0'], ['nodejs', '18.17.1', '18.20.4'], ['nginx', '1.24.0', '1.26.1']];
+  const ids = new Set(), catalog = [];
+  while (catalog.length < 170) {
+    const id = 'CVE-' + (2022 + Math.floor(rnd() * 4)) + '-' + (10000 + Math.floor(rnd() * 39000));
+    if (ids.has(id)) continue; ids.add(id);
+    const x = rnd(), sev = x < .1 ? 'Critical' : x < .38 ? 'High' : x < .78 ? 'Medium' : 'Low';
+    const cvss = +({ Critical: between(9, 10), High: between(7, 8.9), Medium: between(4, 6.9), Low: between(1, 3.9) }[sev]).toFixed(1);
+    const exp = rnd() < { Critical: .55, High: .3, Medium: .1, Low: .03 }[sev];
+    const kev = exp && rnd() < (sev === 'Critical' ? .45 : sev === 'High' ? .25 : 0);
+    catalog.push({ id, sev, cvss, exp, kev, pkg: pick(pkgs) });
+  }
+  const slug = s => s.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+  const wizAssets = [], ctrAssets = [];
+  for (const e of DEFAULT_REGISTRY) {
+    const n = 2 + Math.floor(rnd() * 3);
+    for (let i = 1; i <= n; i++) {
+      const kind = pick([['ec2', 'Virtual Machine'], ['aks-node', 'Kubernetes Node'], ['gce', 'Virtual Machine'], ['vmss', 'Virtual Machine Scale Set']]);
+      wizAssets.push({ name: `${kind[0]}-${slug(e.app)}-prod-0${i}`, type: kind[1], tags: `apm-id:${e.apm}; env:prod; owner:${slug(e.tribe)}`, e });
+    }
+    const m = 1 + Math.floor(rnd() * 3);
+    for (let i = 0; i < m; i++) ctrAssets.push({ name: `registry.internal/${slug(e.app)}${['', '-worker', '-api'][i]}:${2 + i}.${Math.floor(rnd() * 20)}.${Math.floor(rnd() * 9)}`, e });
+  }
+  wizAssets.push({ name: 'ec2-bastion-shared-01', type: 'Virtual Machine', tags: 'env:prod', e: null });
+  wizAssets.push({ name: 'ec2-ci-runner-02', type: 'Virtual Machine', tags: 'env:tools', e: null });
+
+  const thisMon = parseYmd(mondayOf(TODAY));
+  const weeks = Array.from({ length: 39 }, (_, i) => localIso(new Date(thisMon.getTime() - (38 - i) * 7 * DAY)));
+  const addDays = (ymd, n) => localIso(new Date(parseYmd(ymd).getTime() + n * DAY));
+  // Sample story: remediation speeds up over the year, CDX/Omni improves most, SFO slips late in the year.
+  function evolve(assets, initial, addsStart, addsEnd) {
+    const mk = first => ({ a: pick(assets), v: pick(catalog), first });
+    let set = []; for (let i = 0; i < initial; i++) set.push(mk(addDays(weeks[0], -Math.floor(rnd() * 180))));
+    const snaps = [set.slice()], N = weeks.length;
+    for (let w = 1; w < N; w++) {
+      const p = w / (N - 1);
+      set = set.filter(f => {
+        let r = .07 + .08 * p;
+        if (f.v.sev === 'Critical' || f.v.sev === 'High') r *= 1.7;
+        if (f.v.kev) r *= 1.3 + 1.5 * p;
+        const t = f.a.e && f.a.e.tribe;
+        if (t === 'CDX/Omni') r *= 1 + .7 * p;
+        if (t === 'SFO' && p > .65) r *= .5;
+        return rnd() > Math.min(.9, r);
+      });
+      const adds = Math.round(addsStart + (addsEnd - addsStart) * p);
+      for (let i = 0; i < adds; i++) set.push(mk(addDays(weeks[w - 1], 1 + Math.floor(rnd() * 6))));
+      snaps.push(set.slice());
+    }
+    return snaps;
+  }
+  const b = x => x ? 'TRUE' : 'FALSE', yn = x => x ? 'Yes' : 'No';
+  const wizSnaps = evolve(wizAssets, 260, 32, 24), ctrSnaps = evolve(ctrAssets, 300, 36, 27);
+  const uploads = [], raw = {};
+  weeks.forEach((w, i) => {
+    const wizAoa = [WIZ_HEAD, ...wizSnaps[i].map(f => [f.v.id, f.v.sev.toUpperCase(), f.v.cvss, b(f.v.exp), b(f.v.kev), f.first + 'T08:14:00Z', f.a.name, f.a.type, f.a.tags, f.v.pkg[0], f.v.pkg[1], f.v.pkg[2], 'prod-' + (f.a.e ? slug(f.a.e.tribe) : 'shared')])];
+    const ctrAoa = [CTR_HEAD, ...ctrSnaps[i].map(f => [f.v.id, f.v.sev, f.v.cvss, f.a.name, f.v.pkg[0], f.v.pkg[1], f.v.pkg[2], yn(f.v.exp), yn(f.v.kev), f.first, f.a.e.tribe, f.a.e.app, f.a.e.apm])];
+    uploads.push({ id: 'wiz-' + w, source: 'WIZ', week: w, fileName: `wiz-vulnerabilities-${w}.xlsx`, rows: parseAoa(wizAoa).rows });
+    uploads.push({ id: 'container-' + w, source: 'Container', week: w, fileName: `container-scan-${w}.csv`, rows: parseAoa(ctrAoa).rows });
+    if (i === weeks.length - 1) { raw.wiz = wizAoa; raw.ctr = ctrAoa; }
+  });
+  return { uploads, raw };
+}
+
+/* =========================================================
+   Storage
+   ========================================================= */
+const mem = {};
+const hasStore = () => typeof window !== 'undefined' && window.storage && typeof window.storage.get === 'function';
+const store = {
+  async get(k) { if (!hasStore()) return mem[k] ?? null; try { const r = await window.storage.get(k, SHARED); return r ? r.value : null; } catch (e) { return null; } },
+  async set(k, v) { if (!hasStore()) { mem[k] = v; return true; } try { return !!(await window.storage.set(k, v, SHARED)); } catch (e) { console.error(e); return false; } },
+  async del(k) { if (!hasStore()) { delete mem[k]; return true; } try { await window.storage.delete(k, SHARED); return true; } catch (e) { return false; } },
+};
+const PF = ['id', 'sev', 'cvss', 'asset', 'exp', 'kev', 'first', 'tribe', 'app', 'apm', 'pkg', 'ver', 'fix', 'title'];
+const pack = rows => rows.map(r => PF.map(f => (f === 'exp' || f === 'kev') ? (r[f] ? 1 : 0) : (r[f] ?? '')));
+const unpack = arr => arr.map(a => { const r = {}; PF.forEach((f, i) => r[f] = a[i]); r.exp = !!r.exp; r.kev = !!r.kev; r.cvss = (r.cvss === '' || r.cvss == null) ? null : +r.cvss; return r; });
+async function hashPw(p) {
+  const data = new TextEncoder().encode('vmd-v1:' + p);
+  if (window.crypto && crypto.subtle) {
+    const h = await crypto.subtle.digest('SHA-256', data);
+    return [...new Uint8Array(h)].map(x => x.toString(16).padStart(2, '0')).join('');
+  }
+  let h = 5381; for (const x of data) h = ((h << 5) + h + x) | 0; return 'd' + h;
+}
+async function saveIndex() {
+  const idx = S.uploads.map(({ rows, ...m }) => m);
+  return store.set(NS + 'index', JSON.stringify(idx));
+}
+
+/* =========================================================
+   State and derived data
+   ========================================================= */
+const S = {
+  tab: 'overview', uploads: [], mock: null, isSample: true, registry: DEFAULT_REGISTRY.slice(),
+  layout: DEFAULT_LAYOUT.map(w => ({ ...w })), editing: false, qfy: false, qsel: null,
+  auth: null, authed: false, fails: 0, lockUntil: 0, pending: null, D: null,
+  f: { q: '', sev: new Set(), source: '', tribe: '', app: '', kev: false, exp: false, status: '', tier: '' },
+  sort: { key: 'score', dir: -1 }, page: 0, pageSize: 50,
+};
+
+function compute() {
+  if (S.D) return S.D;
+  const ups = S.isSample ? S.mock.uploads : S.uploads;
+  const reg = new Map(S.registry.map(e => [e.apm.toUpperCase(), e]));
+  const bySrc = {};
+  for (const u of ups) { const w = (bySrc[u.source] ??= {}); (w[u.week] ??= []).push(...u.rows); }
+  const current = [], allWeeks = new Set(), latestBySrc = {};
+  const wow = { total: { New: 0, Remediated: 0, Persisting: 0 }, bySev: { New: {}, Remediated: {}, Persisting: {} }, bySrc: {}, comparable: false };
+  const bump = (o, k) => o[k] = (o[k] || 0) + 1;
+  for (const src of Object.keys(bySrc)) {
+    const weeks = Object.keys(bySrc[src]).sort(); weeks.forEach(w => allWeeks.add(w));
+    const firstMap = new Map();
+    for (const w of weeks) for (const r of bySrc[src][w]) { const k = keyOf(r); if (!firstMap.has(k)) firstMap.set(k, w); }
+    const latest = weeks[weeks.length - 1], prev = weeks[weeks.length - 2];
+    latestBySrc[src] = latest;
+    const prevMap = new Map((prev ? bySrc[src][prev] : []).map(r => [keyOf(r), r]));
+    const cur = new Set(), sw = { latest, prev, New: 0, Remediated: 0, Persisting: 0 };
+    for (const r of bySrc[src][latest]) {
+      const k = keyOf(r); if (cur.has(k)) continue; cur.add(k);
+      const e = r.apm ? reg.get(r.apm.toUpperCase()) : null;
+      const first = r.first || firstMap.get(k);
+      const status = !prev ? 'Baseline' : (prevMap.has(k) ? 'Persisting' : 'New');
+      const v = { ...r, source: src, week: latest, first, age: ageDays(first), status, tribe: r.tribe || e?.tribe || 'Unmapped', app: r.app || e?.app || r.apm || 'Unmapped' };
+      v.score = scoreOf(v); v.uid = src + '|' + k;
+      current.push(v);
+      if (prev) { sw[status]++; bump(wow.bySev[status], v.sev); }
+    }
+    if (prev) { wow.comparable = true; for (const [k, r] of prevMap) if (!cur.has(k)) { sw.Remediated++; bump(wow.bySev.Remediated, r.sev); } }
+    wow.bySrc[src] = sw;
+    for (const s of ['New', 'Remediated', 'Persisting']) wow.total[s] += sw[s];
+  }
+  const tribeOf = r => r.tribe || (r.apm && reg.get(r.apm.toUpperCase())?.tribe) || 'Unmapped';
+  const hasFix = current.some(v => v.fix);
+  for (const v of current) v.tier = tierOf(v, hasFix);
+  const tribeTrend = {}, tribeActTrend = {};
+  const trend = [...allWeeks].sort().slice(-12).map((w, wi, arr) => {
+    const c = { Critical: 0, High: 0, Medium: 0, Low: 0 }, tier = { act: 0, plan: 0, monitor: 0 }, tt = {}, ta = {};
+    for (const src in bySrc) for (const r of (bySrc[src][w] || [])) {
+      c[r.sev]++; const tr = tierOf(r, hasFix); tier[tr]++;
+      const t = tribeOf(r); tt[t] = (tt[t] || 0) + 1; if (tr === 'act') ta[t] = (ta[t] || 0) + 1;
+    }
+    for (const t in tt) { (tribeTrend[t] ??= new Array(arr.length).fill(0))[wi] = tt[t]; (tribeActTrend[t] ??= new Array(arr.length).fill(0))[wi] = ta[t] || 0; }
+    return { week: w, c, tier, total: SEVS.reduce((a, s) => a + c[s], 0) };
+  });
+  current.sort((a, b) => b.score - a.score || a.id.localeCompare(b.id));
+  const lw = Object.values(latestBySrc).sort();
+  S.D = { _bySrc: bySrc, _reg: reg, current, wow, trend, tribeTrend, tribeActTrend, hasFix, byUid: new Map(current.map(v => [v.uid, v])), latestBySrc, latestWeek: lw[lw.length - 1], mixedWeeks: new Set(lw).size > 1 };
+  return S.D;
+}
+
+/* =========================================================
+   Rendering
+   ========================================================= */
+const TABS = [['overview', 'Overview'], ['tribes', 'Tribes and applications'], ['vulns', 'Vulnerabilities'], ['admin', 'Admin']];
+const $ = s => document.querySelector(s);
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 3200); }
+
+function renderTabs() {
+  const el = $('#tabs');
+  if (!el.querySelector('.tab')) el.innerHTML = '<span class="thumb" aria-hidden="true"></span>' + TABS.map(([k, l]) => `<button class="tab" role="tab" data-action="tab" data-v="${k}">${l}</button>`).join('');
+  el.querySelectorAll('.tab').forEach(b => b.setAttribute('aria-selected', String(b.dataset.v === S.tab)));
+  moveThumb();
+}
+function moveThumb() {
+  const el = $('#tabs'), sel = el && el.querySelector('.tab[aria-selected="true"]'), th = el && el.querySelector('.thumb');
+  if (!sel || !th) return;
+  th.style.width = sel.offsetWidth + 'px';
+  th.style.transform = `translateX(${sel.offsetLeft - 2}px)`;
+  if (!el.classList.contains('ready')) requestAnimationFrame(() => el.classList.add('ready'));
+}
+window.addEventListener('resize', () => moveThumb());
+// Printing mid-animation must never show a partial count
+window.addEventListener('beforeprint', () => document.querySelectorAll('[data-count]').forEach(el => { el.dataset.done = '1'; el.textContent = fmtC(+el.dataset.count); }));
+const reduceMotion = () => window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+function animateCounts(root) {
+  const reduce = reduceMotion();
+  root.querySelectorAll('[data-count]').forEach(el => {
+    const to = +el.dataset.count;
+    if (reduce || !to) { el.textContent = fmtC(to); return; }
+    const t0 = performance.now(), dur = 900;
+    el.textContent = '0';
+    const step = t => { if (el.dataset.done) return; const p = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - p, 3); el.textContent = fmtC(Math.round(to * e)); if (p < 1) requestAnimationFrame(step); };
+    requestAnimationFrame(step);
+  });
+}
+const cnt = n => `<span data-count="${n}">${fmtC(n)}</span>`;
+function renderStatus() {
+  const D = compute();
+  const srcs = Object.keys(D.latestBySrc).map(s => SOURCE_LABEL[s] || s).join(' and ');
+  $('#status').innerHTML = (S.isSample ? '<span class="tag">Sample data</span>' : '') +
+    (D.latestWeek ? `<span title="${esc(srcs)}">Week of ${esc(fmtWeekLong(D.latestWeek))}</span>` : 'No data');
+}
+function render() {
+  renderTabs(); renderStatus();
+  const m = $('#main');
+  if (S.lastTab !== S.tab) { m.style.animation = 'none'; void m.offsetHeight; m.style.animation = ''; S.lastTab = S.tab; }
+  if (S.tab === 'overview') { m.innerHTML = viewOverview(); renderGrid(false); }
+  else if (S.tab === 'tribes') m.innerHTML = viewTribes();
+  else if (S.tab === 'vulns') { m.innerHTML = viewVulns(); renderTableRegion(); }
+  else m.innerHTML = viewAdmin();
+  animateCounts(m);
+}
+function sampleNotice() {
+  if (!S.isSample) return '';
+  return `<div class="notice"><span>You're viewing sample data. Upload this week's WIZ and container reports to see your own.</span><span class="spacer"></span><button class="btn" data-action="tab" data-v="admin">Upload reports</button></div>`;
+}
+const cnum = n => n ? fmt(n) : '<span class="zero">0</span>';
+
+/* ---------- Overview ---------- */
+function spark(vals, color, h = 36) {
+  if (!vals || vals.length < 2) return '';
+  const lo = Math.min(...vals), hi = Math.max(...vals), n = vals.length;
+  const y = v => hi === lo ? h / 2 : (h - 4) - (v - lo) / (hi - lo) * (h - 10);
+  const pts = vals.map((v, i) => [(i / (n - 1) * 100).toFixed(2), y(v).toFixed(2)]);
+  const line = pts.map(p => p.join(',')).join(' ');
+  return `<svg class="spark" viewBox="0 0 100 ${h}" preserveAspectRatio="none" aria-hidden="true"><path d="M0,${h} L${line.replace(/ /g, ' L')} L100,${h} Z" style="fill:${color};opacity:.12"/><polyline points="${line}" fill="none" style="stroke:${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/></svg>`;
+}
+function delta(cur, prev, neutral) {
+  if (prev == null) return '';
+  const d = cur - prev;
+  if (!d) return '<span class="delta">No change</span>';
+  return `<span class="delta ${neutral ? '' : d > 0 ? 'up' : 'down'}" title="Compared with the previous report week">${d > 0 ? '↑' : '↓'} ${fmt(Math.abs(d))}</span>`;
+}
+const AGE_BUCKETS = [[0, 30, '0 to 30 days'], [31, 60, '31 to 60 days'], [61, 90, '61 to 90 days'], [91, Infinity, 'Over 90 days']];
+function ageChart(cur) {
+  const rows = AGE_BUCKETS.map(([a, b, l]) => { const list = cur.filter(v => v.age >= a && v.age <= b); return { l, c: sevCounts(list), n: list.length }; });
+  const max = Math.max(...rows.map(r => r.n), 1);
+  return `<div class="hbars">${rows.map((r, i) => `<div class="hrow"><span class="hl">${r.l}</span>
+    <span class="htrack"><span class="hbar" style="width:${r.n / max * 100}%;animation-delay:${i * 70}ms">${SEVS.filter(s => r.c[s]).map(s => `<span style="flex:${r.c[s]};background:var(--${SEV_VAR[s]})" title="${s}: ${r.c[s]}"></span>`).join('')}</span></span>
+    <span class="hn">${cnt(r.n)}</span></div>`).join('')}</div>`;
+}
+/* ---------- Widgets ---------- */
+const ICON = {
+  shield: '<path d="M8 1.5l5 2v3.8c0 3.2-2.1 5.7-5 6.7-2.9-1-5-3.5-5-6.7V3.5l5-2z"/>',
+  flame: '<path d="M8 14.5c2.6 0 4.5-1.8 4.5-4.3 0-3-2.7-4.4-3.2-7.7C7.5 4 6.8 5.6 7 7.3 6 6.8 5.4 5.9 5.3 5 4.2 6.2 3.5 7.9 3.5 10.2c0 2.5 1.9 4.3 4.5 4.3z"/>',
+  ring: '<circle cx="8" cy="8" r="6"/><path d="M5.5 8.2l1.7 1.7 3.4-3.6"/>',
+  clock: '<circle cx="8" cy="8" r="6.2"/><path d="M8 4.6V8l2.4 1.6"/>',
+  swap: '<path d="M2.5 5.5h10l-2.5-2.5M13.5 10.5h-10l2.5 2.5"/>',
+  chart: '<path d="M2.5 13.5h11M4.5 11V8M8 11V4.5M11.5 11V6.5"/>',
+  box: '<path d="M8 1.8l5.5 3v6.4L8 14.2l-5.5-3V4.8L8 1.8zM2.5 4.8L8 7.8l5.5-3M8 7.8v6.4"/>',
+  people: '<circle cx="5.5" cy="5.5" r="2.2"/><circle cx="11" cy="6" r="1.8"/><path d="M1.8 13c.4-2.3 1.9-3.6 3.7-3.6s3.3 1.3 3.7 3.6M9.6 9.6c.4-.2.9-.3 1.4-.3 1.6 0 2.8 1.1 3.1 3.2"/>',
+  grid: '<rect x="2" y="2" width="5" height="5" rx="1.3"/><rect x="9" y="2" width="5" height="5" rx="1.3"/><rect x="2" y="9" width="5" height="5" rx="1.3"/><rect x="9" y="9" width="5" height="5" rx="1.3"/>',
+  spark: '<path d="M8 1.8l1.4 4.1 4.3.1-3.4 2.6 1.2 4.2L8 10.3l-3.5 2.5 1.2-4.2L2.3 6l4.3-.1L8 1.8z"/>',
+  list: '<path d="M5.5 4h8M5.5 8h8M5.5 12h8"/><circle cx="2.6" cy="4" r=".6"/><circle cx="2.6" cy="8" r=".6"/><circle cx="2.6" cy="12" r=".6"/>',
+  layers: '<path d="M8 2l6 3.2-6 3.2-6-3.2L8 2zM2 8.3l6 3.2 6-3.2M2 11l6 3.2 6-3.2"/>',
+  bars: '<path d="M2.5 4h11M2.5 8h7M2.5 12h4"/>',
+  total: '<circle cx="8" cy="8" r="6.2"/><path d="M8 5v6M5 8h6"/>',
+};
+const icon = k => `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[k]}</svg>`;
+const SIZE_SPAN = { s: [1, 1], m: [2, 1], l: [2, 2], wide: [4, 1], xl: [4, 2] };
+const SIZE_SHORT = { s: 'S', m: 'M', l: 'L', wide: 'Wide', xl: 'XL' };
+const SIZE_NAME = { s: 'small', m: 'medium', l: 'large', wide: 'wide', xl: 'extra large' };
+const big = sz => sz === 'l' || sz === 'xl';
+const pct = (a, b) => b ? Math.round(a / b * 100) : 0;
+const mixBar = c => `<span class="minibar">${SEVS.filter(s => c[s]).map(s => `<span style="flex:${c[s]};background:var(--${SEV_VAR[s]})"></span>`).join('')}</span>`;
+function ringSvg(frac, color, size = 84, stroke = 9) {
+  const r = (size - stroke) / 2, C = 2 * Math.PI * r, off = C * (1 - Math.max(0, Math.min(1, frac)));
+  return `<svg class="wring" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" aria-hidden="true"><circle cx="${size / 2}" cy="${size / 2}" r="${r}" style="stroke:${color};opacity:.18" stroke-width="${stroke}" fill="none"/><circle cx="${size / 2}" cy="${size / 2}" r="${r}" class="ring-arc" style="stroke:${color};--c:${C.toFixed(1)}" stroke-width="${stroke}" fill="none" stroke-linecap="round" stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}" transform="rotate(-90 ${size / 2} ${size / 2})"/></svg>`;
+}
+function donutSvg(parts, size = 84, stroke = 12) {
+  const r = (size - stroke) / 2, C = 2 * Math.PI * r, tot = parts.reduce((a, p) => a + p.n, 0) || 1; let acc = 0;
+  return `<svg class="wring" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" aria-hidden="true">${parts.map(p => { const len = p.n / tot * C, g = parts.length > 1 ? Math.min(3, len) : 0; const el = `<circle cx="${size / 2}" cy="${size / 2}" r="${r}" style="stroke:${p.color}" stroke-width="${stroke}" fill="none" stroke-dasharray="${Math.max(0, len - g).toFixed(1)} ${C.toFixed(1)}" stroke-dashoffset="${(-acc).toFixed(1)}" transform="rotate(-90 ${size / 2} ${size / 2})"/>`; acc += len; return el; }).join('')}</svg>`;
+}
+function topPackages(cur) {
+  const m = new Map();
+  for (const v of cur) {
+    if (!v.pkg) continue;
+    const k = v.pkg.toLowerCase();
+    let e = m.get(k); if (!e) { e = { pkg: v.pkg, n: 0, crit: 0, kev: 0, assets: new Set(), fix: {}, score: 0 }; m.set(k, e); }
+    e.n++; if (v.sev === 'Critical') e.crit++; if (v.kev) e.kev++; e.assets.add(v.asset); e.score += v.score;
+    if (v.fix) e.fix[v.fix] = (e.fix[v.fix] || 0) + 1;
+  }
+  return [...m.values()].map(e => ({ ...e, assets: e.assets.size, fixTo: (Object.entries(e.fix).sort((a, b) => b[1] - a[1])[0] || [''])[0] })).sort((a, b) => b.score - a.score);
+}
+function topApps(cur) {
+  const m = new Map();
+  for (const v of cur) { const k = appKey(v); let e = m.get(k); if (!e) { e = { key: k, app: v.app, apm: v.apm, tribe: v.tribe, list: [], risk: 0 }; m.set(k, e); } e.list.push(v); e.risk += v.score; }
+  return [...m.values()].map(e => ({ ...e, c: sevCounts(e.list), kev: e.list.filter(v => v.kev).length })).sort((a, b) => b.risk - a.risk);
+}
+const vulnRow = (v, extra = '') => `<button class="w-row" data-action="openvuln" data-v="${esc(v.uid)}"><span class="sw ${v.sev}"></span><span class="w-main"><span class="mono">${esc(v.id)}</span><span class="w-subl">${esc(v.app)}${extra ? ' · ' + extra : ''}</span></span><b>${v.score}</b></button>`;
+
+const WIDGETS = {
+  quarter: {
+    name: 'Quarter progress', desc: 'How this quarter compares with the last one, with a link to the leadership report.', icon: 'chart', sizes: ['m', 'wide'],
+    render(D, sz) {
+      const L = quarters(); if (!L.length) return '<p class="w-subl">Needs weekly history.</p>';
+      const q = L[L.length - 1], p = L[L.length - 2], m = q.m, pm = p && p.m;
+      const cell = (l, v, d) => `<div class="qw-cell"><span class="w-subl">${l}</span><span class="w-mid">${v}</span>${d || '<span class="w-subl">&nbsp;</span>'}</div>`;
+      return `<div class="qw-top"><b>${esc(q.label)}</b><span class="w-subl">${q.current ? 'in progress' : esc(q.range)}${p ? ', vs ' + esc(p.label) : ''}</span><button class="w-more" data-action="report">Leadership report</button></div>
+        <div class="qw-grid ${sz}">${cell('Need action', `${fmt(m.actStart)}<span class="qw-arrow">→</span>${fmt(m.actEnd)}`, pm ? qdelta(m.actEnd, pm.actEnd, false) : '')}
+        ${cell('Remediated', fmtC(m.rem), pm ? qdelta(m.rem, pm.rem, true) : '')}
+        ${cell('MTTR crit/high', m.mttr != null ? m.mttr + '<small>d</small>' : 'n/a', pm ? qdelta(m.mttr, pm.mttr, false, 'd') : '')}
+        ${cell('Within SLA', m.sla != null ? m.sla + '<small>%</small>' : 'n/a', pm ? qdelta(m.sla, pm.sla, true, '%') : '')}
+        ${sz === 'wide' ? cell('Introduced', fmtC(m.intro), '') + cell('Net change', (m.net > 0 ? '+' : '') + fmtC(m.net), '') : ''}</div>`;
+    },
+  },
+  triage: {
+    name: 'Triage', desc: 'Every finding sorted into Act now, Plan and Monitor, so the team sees what is actionable.', icon: 'ring', sizes: ['wide', 'l'],
+    render(D, sz) {
+      const T = D.trend, prev = T.length > 1 ? T[T.length - 2] : null, total = D.current.length;
+      const n = Object.fromEntries(TIERS.map(t => [t.id, D.current.filter(v => v.tier === t.id).length]));
+      return `<div class="sevgrid tri ${sz}">${TIERS.map(t => `<button class="sevcell tier-${t.id}" data-action="gotier" data-v="${t.id}" title="${esc(t.long)}"><span class="tile-top"><span class="l"><span class="sw" style="background:${t.color}"></span>${t.label}</span>${prev ? delta(n[t.id], prev.tier[t.id], t.id === 'monitor') : ''}</span>
+        <span class="w-big">${cnt(n[t.id])}</span><span class="w-subl">${pct(n[t.id], total)}% of open${sz === 'l' || t.id !== 'monitor' ? '' : ''}</span><span class="w-subl tier-desc">${t.desc}</span>${spark(T.map(x => x.tier[t.id]), t.color, 22)}</button>`).join('')}</div>`;
+    },
+  },
+  severity: {
+    name: 'Severity breakdown', desc: 'Open findings by severity with four-week trend lines.', icon: 'bars', sizes: ['wide', 'l'],
+    render(D, sz) {
+      const c = sevCounts(D.current), T = D.trend, prev = T.length > 1 ? T[T.length - 2] : null, total = D.current.length;
+      return `${sz === 'wide' ? '' : `<div class="capsule sm">${SEVS.filter(s => c[s]).map(s => `<span style="flex:${c[s]};background:var(--${SEV_VAR[s]})"></span>`).join('')}</div>`}
+        <div class="sevgrid ${sz}">${SEVS.map(s => `<button class="sevcell" data-action="gosev" data-v="${s}"><span class="tile-top"><span class="l"><span class="sw ${s}"></span>${s}</span>${prev ? delta(T[T.length - 1].c[s], prev.c[s]) : ''}</span>
+          <span class="w-big">${cnt(c[s])}</span><span class="w-subl">${pct(c[s], total)}% of open</span>${spark(T.map(t => t.c[s]), `var(--${SEV_VAR[s]})`, 26)}</button>`).join('')}</div>`;
+    },
+  },
+  open: {
+    name: 'Open vulnerabilities', desc: 'Total open findings and the change since last week.', icon: 'total', sizes: ['s', 'm'],
+    render(D, sz) {
+      const T = D.trend, n = D.current.length, p = T.length > 1 ? T[T.length - 2].total : null, W = D.wow;
+      return `<span class="w-big">${cnt(n)}</span><span class="w-subl">open now ${p != null ? delta(n, p) : ''}</span>
+        ${sz === 'm' && W.comparable ? `<span class="w-subl" style="margin-top:6px">${fmt(W.total.New)} new, ${fmt(W.total.Remediated)} fixed this week</span>` : ''}
+        <span class="w-fill"></span>${spark(T.map(t => t.total), 'var(--accent)', 30)}`;
+    },
+  },
+  kev: {
+    name: 'CISA KEV', desc: 'Findings on the Known Exploited Vulnerabilities list.', icon: 'shield', color: 'var(--crit)', sizes: ['s', 'm', 'l'], action: ['gokev', ''],
+    render(D, sz) {
+      const list = D.current.filter(v => v.kev), c = sevCounts(list);
+      const head = `<span class="w-big" style="color:var(--bad)">${cnt(list.length)}</span><span class="w-subl">actively exploited in the wild</span>`;
+      if (sz === 's') return head + `<span class="w-fill"></span><span class="w-subl">${fmt(c.Critical)} critical, ${fmt(c.High)} high</span>`;
+      return `<div class="w-split"><div>${head}</div><div class="w-list">${list.slice(0, sz === 'l' ? 7 : 2).map(v => vulnRow(v)).join('') || '<p class="w-subl">None open. Nice.</p>'}</div></div>`;
+    },
+  },
+  exploit: {
+    name: 'Known exploits', desc: 'Findings with a public exploit available.', icon: 'flame', color: 'var(--high)', sizes: ['s'], action: ['goexp', ''],
+    render(D) {
+      const n = D.current.filter(v => v.exp).length;
+      return `<span class="w-big">${cnt(n)}</span><span class="w-subl">have a public exploit</span><span class="w-fill"></span>
+        <span class="w-meter"><i style="width:${pct(n, D.current.length)}%;background:var(--high)"></i></span><span class="w-subl">${pct(n, D.current.length)}% of open findings</span>`;
+    },
+  },
+  fixrate: {
+    name: 'Fix rate', desc: 'Share of last week\u2019s findings that were remediated.', icon: 'ring', color: 'var(--good)', sizes: ['s', 'm'],
+    render(D, sz) {
+      const W = D.wow, base = W.total.Remediated + W.total.Persisting, r = pct(W.total.Remediated, base);
+      if (!W.comparable) return `<p class="w-subl">Starts after a second week of reports is uploaded.</p>`;
+      const ring = `<div class="ringwrap">${ringSvg(r / 100, 'var(--good)', sz === 's' ? 78 : 96)}<span><b>${r}%</b></span></div>`;
+      if (sz === 's') return `<div class="w-inline">${ring}<div><span class="w-subl">${fmt(W.total.Remediated)} of ${fmt(base)} fixed since last week</span></div></div>`;
+      return `<div class="w-inline">${ring}<div class="w-stack">${Object.entries(W.bySrc).filter(([, o]) => o.prev).map(([src, o]) => { const b = o.Remediated + o.Persisting; return `<div><span class="w-subl">${esc(SOURCE_LABEL[src])}</span><span class="w-meter"><i style="width:${pct(o.Remediated, b)}%;background:var(--good)"></i></span><span class="w-subl">${pct(o.Remediated, b)}%, ${fmt(o.Remediated)} fixed</span></div>`; }).join('')}</div></div>`;
+    },
+  },
+  aging: {
+    name: 'Aging criticals', desc: 'Critical and high findings open more than 90 days.', icon: 'clock', color: 'var(--high)', sizes: ['s', 'm'], action: ['goaging', ''],
+    render(D, sz) {
+      const list = D.current.filter(v => v.age > 90 && (v.sev === 'Critical' || v.sev === 'High')).sort((a, b) => b.age - a.age);
+      const head = `<span class="w-big">${cnt(list.length)}</span><span class="w-subl">critical or high, open 90+ days</span>`;
+      if (sz === 's') return head + `<span class="w-fill"></span><span class="w-subl">${list.length ? 'Oldest open ' + fmt(list[0].age) + ' days' : 'Nothing overdue'}</span>`;
+      return `<div class="w-split"><div>${head}</div><div class="w-list">${list.slice(0, 2).map(v => vulnRow(v, v.age + ' days')).join('') || '<p class="w-subl">Nothing overdue.</p>'}</div></div>`;
+    },
+  },
+  wow: {
+    name: 'Week over week', desc: 'New, remediated and persisting findings versus last week.', icon: 'swap', sizes: ['m', 'l'],
+    render(D, sz) {
+      const W = D.wow; if (!W.comparable) return '<p class="w-subl">Tracking starts once a second week of reports is uploaded for the same source.</p>';
+      const net = W.total.New - W.total.Remediated;
+      return `<div class="w-three"><button data-action="gostatus" data-v="New"><span class="w-mid">${cnt(W.total.New)}</span><span class="w-subl">New</span></button>
+        <div><span class="w-mid" style="color:var(--good)">${cnt(W.total.Remediated)}</span><span class="w-subl">Remediated</span></div>
+        <button data-action="gostatus" data-v="Persisting"><span class="w-mid">${cnt(W.total.Persisting)}</span><span class="w-subl">Persisting</span></button></div>
+        <span class="w-subl" style="margin-top:10px">Net change <b class="${net > 0 ? 'up' : 'down'}">${net > 0 ? '+' : ''}${fmt(net)}</b> since last week</span>
+        ${sz === 'l' ? `<div class="scroll" style="margin-top:14px"><table class="w-table"><thead><tr><th></th>${SEVS.map(s => `<th class="num"><span class="sw ${s}"></span>${s}</th>`).join('')}</tr></thead><tbody>${['New', 'Remediated', 'Persisting'].map(k => `<tr><td>${k}</td>${SEVS.map(s => `<td class="num">${cnum(W.bySev[k][s])}</td>`).join('')}</tr>`).join('')}</tbody></table></div>` : ''}`;
+    },
+  },
+  trend: {
+    name: 'Weekly trend', desc: 'Open findings per report week, stacked by severity.', icon: 'chart', sizes: ['m', 'l', 'xl'],
+    render(D, sz) { return trendSvg(D.trend, sz === 'm' ? 150 : 262, sz === 'xl' ? 1240 : 620, sz !== 'm'); },
+  },
+  age: {
+    name: 'Age of open findings', desc: 'How long open findings have been around, by severity.', icon: 'clock', sizes: ['m', 'l'],
+    render(D, sz) { return ageChart(D.current) + (sz === 'l' ? `<div class="legend">${SEVS.map(s => `<span><span class="sw ${s}"></span>${s}</span>`).join('')}</div>` : ''); },
+  },
+  source: {
+    name: 'By source', desc: 'Split of open findings between WIZ and container scans.', icon: 'layers', sizes: ['s', 'm'],
+    render(D, sz) {
+      const cols = { WIZ: 'var(--accent)', Container: 'var(--indigo)' };
+      const parts = Object.keys(D.latestBySrc).map(src => ({ src, n: D.current.filter(v => v.source === src).length, color: cols[src] || 'var(--faint)' }));
+      const legend = parts.map(p => `<div class="w-leg"><span class="sw" style="background:${p.color}"></span><span>${esc(sz === 's' ? (p.src === 'WIZ' ? 'WIZ' : 'Container') : SOURCE_LABEL[p.src])}</span><b>${fmt(p.n)}</b></div>`).join('');
+      return `<div class="w-inline">${donutSvg(parts, sz === 's' ? 72 : 96, sz === 's' ? 10 : 13)}<div class="w-stack" style="gap:6px">${legend}${sz === 'm' ? `<span class="w-subl">Latest: ${Object.entries(D.latestBySrc).map(([s, w]) => (s === 'WIZ' ? 'WIZ ' : 'containers ') + fmtWeek(w)).join(', ')}</span>` : ''}</div></div>`;
+    },
+  },
+  tribes: {
+    name: 'Tribe leaderboard', desc: 'Tribes ranked by findings that need action now, with trend.', icon: 'people', sizes: ['m', 'l'],
+    render(D, sz) {
+      const nW = D.trend.length;
+      const G = tribeGroups().filter(g => sz === 'l' || TRIBES.includes(g.tribe)).map(g => ({ ...g, act: g.all.filter(v => v.tier === 'act').length })).sort((a, b) => b.act - a.act);
+      return `<div class="tb-head ${sz}"><span></span>${sz === 'l' ? '<span>Trend</span>' : ''}<span>Act now</span><span>Open</span><span></span></div>
+        <div class="w-list">${G.map(g => { const ta = D.tribeActTrend[g.tribe] || []; return `<button class="w-row tribe-row ${sz}" data-action="gotribe" data-v="${esc(g.tribe)}">
+        <span class="w-main"><b style="font-weight:600">${esc(g.tribe)}</b>${sz === 'l' ? `<span class="w-subl">${fmt(g.all.filter(v => v.tier === 'plan').length)} to plan, ${fmt(g.all.filter(v => v.kev).length)} KEV</span>` : ''}</span>
+        ${sz === 'l' ? `<span class="w-sp">${spark(ta, 'var(--crit)', 26)}</span>` : ''}<b class="tb-act">${fmt(g.act)}</b><span class="tb-open">${fmtC(g.all.length)}</span>
+        ${nW > 1 ? delta(ta[nW - 1] || 0, ta[nW - 2] || 0) : '<span></span>'}</button>`; }).join('')}</div>`;
+    },
+  },
+  apps: {
+    name: 'Riskiest applications', desc: 'Applications ranked by the combined priority of their findings.', icon: 'grid', sizes: ['m', 'l'],
+    render(D, sz) {
+      return `<div class="w-list">${topApps(D.current).slice(0, sz === 'l' ? 8 : 3).map((a, i) => `<button class="w-row" data-action="goapp" data-v="${esc(a.key)}"><span class="w-rank">${i + 1}</span>
+        <span class="w-main"><b style="font-weight:600">${esc(a.app)}</b><span class="w-subl">${esc(a.tribe)}${a.kev ? ` · <span class="up">${a.kev} KEV</span>` : ''}</span></span><span class="w-mix">${mixBar(a.c)}</span><b>${fmt(a.list.length)}</b></button>`).join('')}</div>`;
+    },
+  },
+  packages: {
+    name: 'Top upgrades', desc: 'Package upgrades that would close the most risk.', icon: 'box', color: 'var(--accent)', sizes: ['m', 'l'],
+    render(D, sz) {
+      return `<div class="w-list">${topPackages(D.current).slice(0, sz === 'l' ? 8 : 3).map(p => `<button class="w-row" data-action="gopkg" data-v="${esc(p.pkg)}">
+        <span class="w-main"><b style="font-weight:600">${esc(p.pkg)}${p.fixTo ? ` <span class="w-arrow">→ ${esc(p.fixTo)}</span>` : ''}</b><span class="w-subl">${fmt(p.assets)} asset${p.assets === 1 ? '' : 's'}${p.crit ? ` · ${p.crit} critical` : ''}${p.kev ? ` · <span class="up">${p.kev} KEV</span>` : ''}</span></span>
+        <span class="w-fixes"><b>${fmt(p.n)}</b><span class="w-subl">fixes</span></span></button>`).join('') || '<p class="w-subl">No package data in these reports.</p>'}</div>`;
+    },
+  },
+  newcrit: {
+    name: 'New this week', desc: 'Critical and high findings that appeared since last week.', icon: 'spark', color: 'var(--crit)', sizes: ['s', 'm', 'l'], action: ['gostatus', 'New'],
+    render(D, sz) {
+      if (!D.wow.comparable) return '<p class="w-subl">Starts after a second week of reports is uploaded.</p>';
+      const list = D.current.filter(v => v.status === 'New' && (v.sev === 'Critical' || v.sev === 'High'));
+      if (sz === 's') { const all = D.current.filter(v => v.status === 'New').length; return `<span class="w-big">${cnt(list.length)}</span><span class="w-subl">new critical or high</span><span class="w-fill"></span><span class="w-subl">${fmt(all)} new findings in total</span>`; }
+      return `<div class="w-split"><div><span class="w-big">${cnt(list.length)}</span><span class="w-subl">new critical or high</span></div>
+        <div class="w-list">${list.slice(0, sz === 'l' ? 7 : 2).map(v => vulnRow(v, 'new')).join('') || '<p class="w-subl">Nothing new. Nice.</p>'}</div></div>`;
+    },
+  },
+  top: {
+    name: 'Fix these first', desc: 'Highest priority findings right now.', icon: 'list', sizes: ['l', 'xl'],
+    render(D, sz) {
+      const rows = D.current.slice(0, 7);
+      if (sz === 'l') return `<div class="w-list">${D.current.slice(0, 6).map(v => vulnRow(v, v.age + 'd')).join('')}</div>`;
+      return `<table class="w-table"><thead><tr><th>Score</th><th>ID</th><th>Asset</th><th>Application</th><th>Flags</th><th class="num">Age</th><th></th></tr></thead><tbody>
+        ${rows.map(v => `<tr class="click" data-action="openvuln" data-v="${esc(v.uid)}" tabindex="0"><td><b class="bigscore">${v.score}</b></td><td style="white-space:nowrap"><span class="sw ${v.sev}"></span><span class="mono">${esc(v.id)}</span></td><td class="asset">${esc(v.asset)}</td><td>${esc(v.app)} <span class="muted small">${esc(v.tribe)}</span></td><td style="white-space:nowrap">${flags(v)}</td><td class="num">${v.age}d</td><td class="chev" aria-hidden="true">›</td></tr>`).join('')}</tbody></table>`;
+    },
+  },
+};
+function widgetHtml(w, D, editing) {
+  const def = WIDGETS[w.id]; if (!def) return '';
+  const [cs, rs] = SIZE_SPAN[w.size] || SIZE_SPAN.m;
+  const act = def.action && !editing ? ` data-action="${def.action[0]}" data-v="${def.action[1]}" tabindex="0" role="button"` : '';
+  const more = ({ top: 'vulns', tribes: 'tribes', apps: 'tribes' })[w.id];
+  return `<article class="widget w-${w.size}${def.action ? ' w-click' : ''}" data-key="${w.id}" style="grid-column:span ${cs};grid-row:span ${rs};--wc:${def.color || 'var(--muted)'}"${editing ? ' draggable="true"' : ''}${act} aria-label="${esc(def.name)}">
+    <header class="w-head">${icon(def.icon)}<span>${esc(def.name)}</span>${more && !editing ? `<button class="w-more" data-action="tab" data-v="${more}">See all</button>` : ''}</header>
+    <div class="w-body">${def.render(D, w.size)}</div>
+    ${editing ? `<button class="w-remove" data-action="wremove" data-v="${w.id}" aria-label="Remove ${esc(def.name)}"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M1.5 5h7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+      <div class="w-tools"><button data-action="wmove" data-v="${w.id}:-1" aria-label="Move ${esc(def.name)} earlier">‹</button>
+      ${def.sizes.length > 1 ? def.sizes.map(z => `<button data-action="wsize" data-v="${w.id}:${z}" aria-pressed="${z === w.size}" aria-label="${SIZE_NAME[z]} size">${SIZE_SHORT[z]}</button>`).join('') : ''}
+      <button data-action="wmove" data-v="${w.id}:1" aria-label="Move ${esc(def.name)} later">›</button></div>` : ''}
+  </article>`;
+}
+function renderGrid(flip) {
+  const grid = $('#wgrid'); if (!grid) return;
+  const first = flip ? new Map([...grid.children].map(el => [el.dataset.key, el.getBoundingClientRect()])) : null;
+  const D = compute();
+  grid.classList.toggle('editing', !!S.editing);
+  grid.innerHTML = S.layout.length ? S.layout.map(w => widgetHtml(w, D, S.editing)).join('')
+    : `<div class="w-empty"><p>No widgets on your overview.</p><button class="btn" data-action="wgallery">Add widgets</button></div>`;
+  if (first) flipAnimate(grid, first);
+}
+function flipAnimate(grid, first) {
+  if (reduceMotion() || !Element.prototype.animate) return;
+  for (const el of grid.children) {
+    const a = first.get(el.dataset.key), b = el.getBoundingClientRect();
+    if (!a) { el.animate([{ opacity: 0, transform: 'scale(.92)' }, { opacity: 1, transform: 'none' }], { duration: 320, easing: 'cubic-bezier(.32,.72,0,1)' }); continue; }
+    const dx = a.left - b.left, dy = a.top - b.top, sx = a.width / b.width, sy = a.height / b.height;
+    if (Math.abs(dx) < 1 && Math.abs(dy) < 1 && Math.abs(sx - 1) < .01 && Math.abs(sy - 1) < .01) continue;
+    el.animate([{ transformOrigin: 'top left', transform: `translate(${dx}px,${dy}px) scale(${sx},${sy})` }, { transformOrigin: 'top left', transform: 'none' }], { duration: 420, easing: 'cubic-bezier(.32,.72,0,1)' });
+  }
+}
+let layoutTimer;
+function saveLayout() { clearTimeout(layoutTimer); layoutTimer = setTimeout(() => store.set(NS + 'layout4', JSON.stringify(S.layout)), 250); }
+function openGallery() {
+  const g = $('#gallery'), used = new Set(S.layout.map(w => w.id));
+  $('#galleryPanel').innerHTML = `<div class="sh-head" style="padding:22px 24px 0 28px"><h2 id="galTitle" style="font-size:24px">Add widgets</h2><span class="spacer"></span><button class="icon-btn" data-action="closegallery" aria-label="Close"><svg width="14" height="14" viewBox="0 0 14 14"><path d="M2 2l10 10M12 2L2 12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button></div>
+    <p class="sub" style="padding:0 28px;margin:6px 0 16px">Choose what appears on your overview. You can resize and reorder widgets after adding them.</p>
+    <div class="gal">${Object.entries(WIDGETS).map(([id, d]) => `<div class="gal-card"><span class="gal-ic" style="color:${d.color || 'var(--accent)'}">${icon(d.icon)}</span><div class="gal-txt"><b>${esc(d.name)}</b><span class="w-subl">${esc(d.desc)}</span><span class="w-subl">Sizes: ${d.sizes.map(z => SIZE_NAME[z]).join(', ')}</span></div>
+      ${used.has(id) ? '<span class="gal-added">Added</span>' : `<button class="btn ghost" data-action="wadd" data-v="${id}">Add</button>`}</div>`).join('')}</div>`;
+  if (g.hidden) { S.galReturn = document.activeElement; g.hidden = false; requestAnimationFrame(() => requestAnimationFrame(() => g.classList.add('open'))); }
+  $('#galleryPanel').focus({ preventScroll: true });
+}
+function closeGallery() {
+  const g = $('#gallery'); if (g.hidden) return;
+  g.classList.remove('open'); setTimeout(() => { if (!g.classList.contains('open')) g.hidden = true; }, reduceMotion() ? 0 : 300);
+  if (S.galReturn && S.galReturn.isConnected) S.galReturn.focus({ preventScroll: true });
+}
+function viewOverview() {
+  const D = compute(), total = D.current.length, T = D.trend;
+  const act = D.current.filter(v => v.tier === 'act').length, prevAct = T.length > 1 ? T[T.length - 2].tier.act : null;
+  const change = prevAct == null ? '' : act < prevAct ? `Down ${fmt(prevAct - act)} from last week. ` : act > prevAct ? `Up ${fmt(act - prevAct)} from last week. ` : 'Same as last week. ';
+  const monitor = D.current.filter(v => v.tier === 'monitor').length;
+  return `${sampleNotice()}
+  <div class="ov-head"><div>
+    <p class="kicker">${D.latestWeek ? 'Week of ' + esc(fmtWeekLong(D.latestWeek)) : ''}</p>
+    <h1 class="display">${act ? `${cnt(act)} need action now.` : 'Nothing needs urgent action.'}</h1>
+    <p class="lede" style="margin-bottom:0">${change}That's ${pct(act, total) || (act ? '<1' : 0)}% of ${fmtC(total)} open findings. ${pct(monitor, total)}% are low risk or waiting on a vendor fix.</p></div>
+    <div class="row ov-actions">${S.editing ? `<button class="btn ghost" data-action="wreset">Reset layout</button><button class="btn ghost" data-action="wgallery">Add widget</button><button class="btn" data-action="wdone">Done</button>` : `<button class="btn ghost" data-action="wedit">Edit widgets</button><button class="btn" data-action="report">Leadership report</button>`}</div>
+  </div>
+  ${S.editing ? '<p class="edit-hint">Drag widgets to reorder, pick a size, or remove ones you don\u2019t need.</p>' : ''}
+  <div class="wgrid" id="wgrid"></div>`;
+}
+function trendSvg(trend, Ht = 250, Wd = 620, labels = true) {
+  if (!trend.length) return '<p class="muted">No data yet.</p>';
+  const pl = 40, pr = 8, pt = 22, pb = 26, ph = Ht - pt - pb, pw = Wd - pl - pr;
+  const max = Math.max(...trend.map(t => t.total), 1);
+  const step = [5, 10, 20, 25, 50, 75, 100, 125, 150, 200, 250, 500, 1000, 2000, 2500, 5000].find(x => x * 4 >= max) || Math.ceil(max / 4000) * 1000, niceMax = step * 4;
+  const slot = pw / trend.length, bw = Math.min(64, slot * .56), gap = 2;
+  let g = '';
+  for (let i = 0; i <= 4; i++) {
+    if (!labels && i % 2) continue;
+    const v = niceMax * i / 4, y = pt + ph - (v / niceMax) * ph;
+    g += `<line x1="${pl}" x2="${Wd - pr}" y1="${y}" y2="${y}" style="stroke:var(--line)"/><text x="${pl - 8}" y="${y + 4}" text-anchor="end" font-size="11" style="fill:var(--muted)">${fmt(v)}</text>`;
+  }
+  trend.forEach((t, i) => {
+    const x = pl + slot * i + (slot - bw) / 2; let y = pt + ph, bars = '';
+    for (const s of SEVS) { const h = t.c[s] / niceMax * ph; if (h <= 0) continue; y -= h; bars += `<rect x="${x}" y="${y}" width="${bw}" height="${Math.max(1, h - gap)}" rx="4" style="fill:var(--${SEV_VAR[s]})"/>`; }
+    g += `<g class="wk" data-i="${i}" tabindex="0" role="img" aria-label="Week of ${esc(fmtWeek(t.week))}: ${t.total} open">
+      <rect class="hit" x="${pl + slot * i}" y="${pt - 16}" width="${slot}" height="${ph + 16 + pb}" rx="10"/>
+      <g class="stack" style="animation-delay:${i * 70}ms">${bars}</g>
+      <text x="${x + bw / 2}" y="${y - 7}" text-anchor="middle" font-size="12" font-weight="600" style="fill:var(--ink)">${fmt(t.total)}</text>
+      <text x="${x + bw / 2}" y="${Ht - 6}" text-anchor="middle" font-size="11" style="fill:var(--muted)">${esc(fmtWeek(t.week))}</text></g>`;
+  });
+  return `<div class="trend"><svg viewBox="0 0 ${Wd} ${Ht}">${g}</svg><div class="tip" role="status" hidden></div>
+    ${labels ? `<div class="legend">${SEVS.map(s => `<span><span class="sw ${s}"></span>${s}</span>`).join('')}</div>` : ''}</div>`;
+}
+function showTip(g) {
+  const T = compute().trend, i = +g.dataset.i, t = T[i], p = T[i - 1];
+  const box = g.closest('.trend'), tip = box.querySelector('.tip');
+  box.querySelectorAll('.wk').forEach(x => x.classList.toggle('on', x === g));
+  tip.innerHTML = `<b>Week of ${esc(fmtWeekLong(t.week))}</b><span class="tip-total">${fmt(t.total)} open ${p ? delta(t.total, p.total) : ''}</span>
+    ${SEVS.map(s => `<span class="tip-row"><span><span class="sw ${s}"></span>${s}</span><b>${fmt(t.c[s])}</b></span>`).join('')}`;
+  tip.hidden = false;
+  const gr = g.querySelector('.hit').getBoundingClientRect(), br = box.getBoundingClientRect();
+  const w = tip.offsetWidth, cx = gr.left - br.left + gr.width / 2;
+  tip.style.left = Math.max(0, Math.min(br.width - w, cx - w / 2)) + 'px';
+}
+function hideTip(box) { box.querySelector('.tip').hidden = true; box.querySelectorAll('.wk').forEach(x => x.classList.remove('on')); }
+
+const SEV_VAR = { Critical: 'crit', High: 'high', Medium: 'med', Low: 'low' };
+const sevCell = s => `<span class="sw ${s}"></span>${s}`;
+const scoreCell = n => `<span class="score"><b>${n}</b><i style="--w:${n}%"></i></span>`;
+const flags = v => [v.kev ? '<span class="flag kev" title="Listed in CISA Known Exploited Vulnerabilities">KEV</span>' : '', v.exp ? '<span class="flag" title="Public exploit available">Exploit</span>' : ''].filter(Boolean).join(' ') || '<span class="zero">None</span>';
+
+/* ---------- Quarterly ---------- */
+function history() {
+  const D = compute();
+  if (D._hist) return D._hist;
+  const { _bySrc: bySrc, _reg: reg, hasFix } = D;
+  const tribeOf = r => r.tribe || (r.apm && reg.get(r.apm.toUpperCase())?.tribe) || 'Unmapped';
+  const weekly = new Map(), events = [];
+  const W = w => { let o = weekly.get(w); if (!o) { o = { week: w, open: 0, act: 0, kev: 0, intro: 0, rem: 0, tribes: {} }; weekly.set(w, o); } return o; };
+  const T = (o, t) => o.tribes[t] ??= { open: 0, act: 0, intro: 0, rem: 0 };
+  for (const src in bySrc) {
+    const weeks = Object.keys(bySrc[src]).sort(), first = new Map(); let prev = null;
+    for (const w of weeks) {
+      const o = W(w), cur = new Map();
+      for (const r of bySrc[src][w]) {
+        const k = keyOf(r); if (cur.has(k)) continue; cur.set(k, r);
+        if (!first.has(k)) first.set(k, r.first || w);
+        const t = tribeOf(r), to = T(o, t);
+        o.open++; to.open++;
+        if (tierOf(r, hasFix) === 'act') { o.act++; to.act++; }
+        if (r.kev) o.kev++;
+        if (prev && !prev.has(k)) { o.intro++; to.intro++; }
+      }
+      if (prev) for (const [k, r] of prev) if (!cur.has(k)) {
+        const t = tribeOf(r); o.rem++; T(o, t).rem++;
+        events.push({ week: w, days: Math.max(0, Math.round((parseYmd(w) - parseYmd(first.get(k))) / DAY)), sev: r.sev, tribe: t, kev: r.kev });
+      }
+      prev = cur;
+    }
+  }
+  D._hist = { series: [...weekly.values()].sort((a, b) => a.week.localeCompare(b.week)), events };
+  return D._hist;
+}
+function quarterInfo(ymd, fy) {
+  const d = parseYmd(ymd), m = d.getMonth(), y = d.getFullYear();
+  let q, start, end, key, label;
+  if (!fy) { q = Math.floor(m / 3) + 1; start = new Date(y, (q - 1) * 3, 1); end = new Date(y, q * 3, 0); key = `${y}-Q${q}`; label = `Q${q} ${y}`; }
+  else { const fs = m >= 3 ? y : y - 1; q = Math.floor(((m + 9) % 12) / 3) + 1; start = new Date(fs, 3 + (q - 1) * 3, 1); end = new Date(fs, 6 + (q - 1) * 3, 0); key = `FY${fs}-Q${q}`; label = `Q${q} FY${String(fs + 1).slice(2)}`; }
+  const mo = x => x.toLocaleDateString('en-GB', { month: 'short' });
+  return { key, label, start, end, range: `${mo(start)} to ${mo(end)} ${end.getFullYear()}` };
+}
+const avg = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
+function qMetrics(q, startSnap, events, tribe) {
+  const pick = s => !s ? { open: 0, act: 0, intro: 0, rem: 0, kev: 0 } : tribe ? (s.tribes[tribe] || { open: 0, act: 0, intro: 0, rem: 0 }) : s;
+  const wk = new Set(q.weeks.map(w => w.week)), endSnap = q.weeks[q.weeks.length - 1];
+  const intro = q.weeks.reduce((a, w) => a + pick(w).intro, 0), rem = q.weeks.reduce((a, w) => a + pick(w).rem, 0);
+  const ev = events.filter(e => wk.has(e.week) && (!tribe || e.tribe === tribe));
+  const ch = ev.filter(e => e.sev === 'Critical' || e.sev === 'High');
+  const bySev = Object.fromEntries(SEVS.map(sv => { const l = ev.filter(e => e.sev === sv); return [sv, { mttr: l.length ? Math.round(avg(l.map(e => e.days))) : null, sla: l.length ? pct(l.filter(e => e.days <= SLA_DAYS[sv]).length, l.length) : null, n: l.length }]; }));
+  const openStart = pick(startSnap).open, actStart = pick(startSnap).act;
+  return {
+    intro, rem, net: intro - rem, openStart, actStart, openEnd: pick(endSnap).open, actEnd: pick(endSnap).act, kevEnd: tribe ? null : endSnap.kev,
+    rate: pct(rem, openStart + intro), mttr: ch.length ? Math.round(avg(ch.map(e => e.days))) : null,
+    sla: ch.length ? pct(ch.filter(e => e.days <= SLA_DAYS[e.sev]).length, ch.length) : null, bySev, fixedCH: ch.length,
+  };
+}
+function quarters() {
+  const H = history(), fy = S.qfy, map = new Map();
+  for (const w of H.series) { const qi = quarterInfo(w.week, fy); let q = map.get(qi.key); if (!q) { q = { ...qi, weeks: [] }; map.set(qi.key, q); } q.weeks.push(w); }
+  const list = [...map.values()].sort((a, b) => a.start - b.start);
+  const tribes = new Set(); H.series.forEach(w => Object.keys(w.tribes).forEach(t => tribes.add(t)));
+  list.forEach((q, i) => {
+    const pq = list[i - 1], startSnap = pq ? pq.weeks[pq.weeks.length - 1] : q.weeks[0];
+    q.current = TODAY >= q.start && TODAY <= q.end;
+    q.expected = Math.round((q.end - q.start) / DAY / 7);
+    q.partialStart = !pq && q.weeks.length < q.expected - 1;
+    q.m = qMetrics(q, startSnap, H.events, null);
+    q.t = Object.fromEntries([...tribes].map(t => [t, qMetrics(q, startSnap, H.events, t)]));
+  });
+  return list;
+}
+function qdelta(cur, prev, upGood, unit = '') {
+  if (cur == null || prev == null) return '';
+  const d = cur - prev; if (!d) return '<span class="delta">No change</span>';
+  const good = upGood ? d > 0 : d < 0, txt = unit === '%' ? `${Math.abs(d)} pts` : unit === 'd' ? `${Math.abs(d)} days` : prev ? `${Math.round(Math.abs(d) / prev * 100)}%` : fmt(Math.abs(d));
+  return `<span class="delta ${good ? 'down' : 'up'}" title="${d > 0 ? '+' : ''}${fmt(d)}${unit === 'd' ? ' days' : unit === '%' ? ' points' : ''} vs previous quarter">${d > 0 ? '↑' : '↓'} ${txt}</span>`;
+}
+function qSummary(q, p, list) {
+  const m = q.m, pm = p && p.m, so = q.current ? ' so far' : '';
+  const out = [];
+  out.push(`In ${q.label}${so}, the team fixed <b>${fmtC(m.rem)}</b> findings${pm && pm.rem ? `, ${m.rem >= pm.rem ? 'up' : 'down'} ${Math.round(Math.abs(m.rem - pm.rem) / pm.rem * 100)}% on ${p.label}` : ''}, while ${fmtC(m.intro)} new ones appeared.`);
+  out.push(`Findings needing action ${m.actEnd < m.actStart ? 'fell' : m.actEnd > m.actStart ? 'rose' : 'held steady'} from <b>${fmt(m.actStart)}</b> to <b>${fmt(m.actEnd)}</b>.`);
+  if (m.mttr != null) out.push(`Critical and high issues took <b>${m.mttr} days</b> on average to fix${pm && pm.mttr != null ? ` (${m.mttr <= pm.mttr ? Math.abs(pm.mttr - m.mttr) + ' days faster' : (m.mttr - pm.mttr) + ' days slower'} than ${p.label})` : ''}, and <b>${m.sla}%</b> were fixed within SLA.`);
+  const tr = Object.entries(q.t).filter(([t]) => t !== 'Unmapped' && q.t[t].actStart > 0 && Math.abs(q.t[t].actEnd - q.t[t].actStart) >= 2).map(([t, x]) => ({ t, ch: (x.actEnd - x.actStart) / x.actStart }));
+  if (tr.length) {
+    const best = tr.reduce((a, b) => b.ch < a.ch ? b : a), worst = tr.reduce((a, b) => b.ch > a.ch ? b : a);
+    if (best.ch < -0.05) out.push(`${esc(best.t)} improved most, cutting action items by ${Math.round(-best.ch * 100)}%.`);
+    if (worst.ch > 0.05 && worst.t !== best.t) out.push(`${esc(worst.t)} needs attention: action items rose ${Math.round(worst.ch * 100)}%.`);
+  }
+  return out.join(' ');
+}
+function qBars(list) {
+  const Wd = 620, Ht = 240, pl = 40, pr = 8, pt = 24, pb = 30, ph = Ht - pt - pb, pw = Wd - pl - pr;
+  const max = Math.max(1, ...list.flatMap(q => [q.m.intro, q.m.rem]));
+  const step = [5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 2500, 5000, 10000, 25000, 50000, 100000].find(x => x * 4 >= max) || Math.ceil(max / 4e5) * 1e5, top = step * 4;
+  const slot = pw / list.length, bw = Math.min(40, slot * .28);
+  let g = '';
+  for (let i = 0; i <= 4; i++) { const y = pt + ph - ph * i / 4; g += `<line x1="${pl}" x2="${Wd - pr}" y1="${y}" y2="${y}" style="stroke:var(--line)"/><text x="${pl - 8}" y="${y + 4}" text-anchor="end" font-size="11" style="fill:var(--muted)">${fmtC(top * i / 4)}</text>`; }
+  list.forEach((q, i) => {
+    const cx = pl + slot * i + slot / 2;
+    [['intro', 'var(--faint)', -1], ['rem', 'var(--good)', 1]].forEach(([k, col, side], j) => {
+      const v = q.m[k], h = v / top * ph, x = cx + (side < 0 ? -bw - 3 : 3), y = pt + ph - h;
+      g += `<g class="stack" style="animation-delay:${i * 80 + j * 40}ms"><rect x="${x}" y="${y}" width="${bw}" height="${Math.max(1, h)}" rx="5" style="fill:${col}"><title>${k === 'intro' ? 'Introduced' : 'Remediated'}: ${fmt(v)}</title></rect></g>
+        <text x="${x + bw / 2}" y="${y - 6}" text-anchor="middle" font-size="11.5" font-weight="600" style="fill:var(--ink)">${fmtC(v)}</text>`;
+    });
+    g += `<text x="${cx}" y="${Ht - 8}" text-anchor="middle" font-size="12" font-weight="${q.key === S.qsel ? 700 : 400}" style="fill:${q.key === S.qsel ? 'var(--ink)' : 'var(--muted)'}">${esc(q.label)}${q.current ? '*' : ''}</text>`;
+  });
+  return `<div class="trend"><svg viewBox="0 0 ${Wd} ${Ht}" role="img" aria-label="Introduced and remediated findings per quarter">${g}</svg>
+    <div class="legend"><span><span class="sw" style="background:var(--faint)"></span>Introduced</span><span><span class="sw" style="background:var(--good)"></span>Remediated</span>${list.some(q => q.current) ? '<span>* quarter in progress</span>' : ''}</div></div>`;
+}
+function qLine(list) {
+  const pts = list.flatMap(q => q.weeks.map(w => ({ w: w.week, v: w.act, q: q.key })));
+  if (pts.length < 2) return '<p class="muted">Needs at least two weeks of data.</p>';
+  const Wd = 620, Ht = 240, pl = 40, pr = 12, pt = 30, pb = 26, ph = Ht - pt - pb, pw = Wd - pl - pr;
+  const max = Math.max(1, ...pts.map(p => p.v)), step = [5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 5000, 10000].find(x => x * 4 >= max) || 25000, top = step * 4;
+  const X = i => pl + i / (pts.length - 1) * pw, Y = v => pt + ph - v / top * ph;
+  let g = '', idx = 0;
+  list.forEach((q, qi) => {
+    const x0 = X(idx), x1 = X(idx + q.weeks.length - 1);
+    if (qi % 2 === 0) g += `<rect x="${x0 - 4}" y="${pt - 22}" width="${x1 - x0 + 8}" height="${ph + 22}" rx="8" style="fill:var(--fill)"/>`;
+    g += `<text x="${(x0 + x1) / 2}" y="${pt - 8}" text-anchor="middle" font-size="11.5" font-weight="${q.key === S.qsel ? 700 : 500}" style="fill:${q.key === S.qsel ? 'var(--ink)' : 'var(--muted)'}">${esc(q.label)}</text>`;
+    idx += q.weeks.length;
+  });
+  for (let i = 0; i <= 4; i += 2) { const y = Y(top * i / 4); g += `<line x1="${pl}" x2="${Wd - pr}" y1="${y}" y2="${y}" style="stroke:var(--line)"/><text x="${pl - 8}" y="${y + 4}" text-anchor="end" font-size="11" style="fill:var(--muted)">${fmtC(top * i / 4)}</text>`; }
+  const line = pts.map((p, i) => `${X(i).toFixed(1)},${Y(p.v).toFixed(1)}`).join(' ');
+  g += `<polygon points="${pl},${pt + ph} ${line} ${X(pts.length - 1)},${pt + ph}" style="fill:var(--crit);opacity:.08"/>`;
+  g += `<polyline points="${line}" fill="none" style="stroke:var(--crit)" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round" class="drawline"/>`;
+  const last = pts[pts.length - 1];
+  g += `<circle cx="${X(pts.length - 1)}" cy="${Y(last.v)}" r="4" style="fill:var(--crit)"/><text x="${X(pts.length - 1) - 8}" y="${Y(last.v) - 10}" text-anchor="end" font-size="12" font-weight="600" style="fill:var(--ink)">${fmt(last.v)} now</text>`;
+  const f = pts[0]; g += `<text x="${X(0) + 4}" y="${Y(f.v) - 10}" font-size="12" style="fill:var(--muted)">${fmt(f.v)}</text>`;
+  g += `<text x="${pl}" y="${Ht - 6}" font-size="11" style="fill:var(--muted)">${esc(fmtWeek(pts[0].w))}</text><text x="${Wd - pr}" y="${Ht - 6}" text-anchor="end" font-size="11" style="fill:var(--muted)">${esc(fmtWeek(last.w))}</text>`;
+  return `<div class="trend"><svg viewBox="0 0 ${Wd} ${Ht}" role="img" aria-label="Findings needing action, week by week">${g}</svg></div>`;
+}
+function reportHtml() {
+  const list = quarters();
+  if (!list.length) return `<h1>Quarterly review</h1><p class="lede">Upload weekly reports to build quarterly history.</p>`;
+  if (!list.find(q => q.key === S.qsel)) S.qsel = list[list.length - 1].key;
+  const i = list.findIndex(q => q.key === S.qsel), q = list[i], p = list[i - 1], m = q.m, pm = p && p.m;
+  const kpi = (label, val, d, sub) => `<div class="qkpi"><span class="w-subl">${label}</span><span class="qv">${val}</span><span class="qd">${d || ''}<span class="w-subl">${sub}</span></span></div>`;
+  const vs = p ? `vs ${esc(p.label)}` : 'first quarter on record';
+  const tribeRows = Object.entries(q.t).filter(([t, x]) => x.openEnd || x.rem).sort((a, b) => (TRIBES.indexOf(a[0]) + 99) % 99 - (TRIBES.indexOf(b[0]) + 99) % 99).map(([t, x]) => {
+    const ch = x.actStart ? (x.actEnd - x.actStart) / x.actStart : (x.actEnd ? 1 : 0);
+    const moved = Math.abs(x.actEnd - x.actStart) >= 2, st = moved && ch <= -.1 ? ['Improving', 'good'] : moved && ch >= .1 ? ['Worsening', 'bad'] : ['Steady', 'neutral'];
+    return `<tr class="click" data-action="gotribe" data-v="${esc(t)}" tabindex="0"><td><b>${esc(t)}</b></td><td class="num">${fmt(x.actStart)} <span class="muted">→</span> <b class="${x.actEnd > x.actStart ? 'up' : x.actEnd < x.actStart ? 'down' : ''}">${fmt(x.actEnd)}</b></td>
+      <td class="num">${fmtC(x.rem)}</td><td class="num">${fmtC(x.intro)}</td><td class="num">${x.rate}%</td><td class="num">${x.mttr != null ? x.mttr + ' days' : '<span class="zero">n/a</span>'}</td>
+      <td class="num">${x.sla != null ? x.sla + '%' : '<span class="zero">n/a</span>'}</td><td><span class="qstatus ${st[1]}">${st[0]}</span></td></tr>`;
+  }).join('');
+  const shown = list.slice(-6);
+  return `<div class="ov-head"><div>
+      <p class="kicker">Vulnerability management, quarterly review${q.current ? ' (in progress)' : ''}</p>
+      <h1 class="display">${esc(q.label)}</h1>
+      <p class="lede" style="margin-bottom:0">${esc(q.range)}. ${q.weeks.length} of ${q.expected} weekly reports${q.current ? ' so far' : ''}${q.partialStart ? ', history starts mid-quarter' : ''}.</p></div>
+    <div class="row ov-actions no-print">
+      <div class="segctl mini" role="group" aria-label="Year type"><button class="tab" data-action="qfy" data-v="0" aria-pressed="${!S.qfy}">Calendar year</button><button class="tab" data-action="qfy" data-v="1" aria-pressed="${S.qfy}">Financial year</button></div>
+</div>
+  </div>
+  <div class="qpicker no-print" role="group" aria-label="Quarter">${list.map(x => `<button class="chip" data-action="qsel" data-v="${x.key}" aria-pressed="${x.key === q.key}">${esc(x.label)}${x.current ? '<span class="live" title="In progress"></span>' : ''}</button>`).join('')}</div>
+  <section class="panel qsummary"><h2>Summary</h2><p>${qSummary(q, p, list)}</p></section>
+  <div class="qkpis">
+    ${kpi('Need action at quarter end', cnt(m.actEnd), pm ? qdelta(m.actEnd, pm.actEnd, false) : '', vs)}
+    ${kpi('Findings remediated', cnt(m.rem), pm ? qdelta(m.rem, pm.rem, true) : '', vs)}
+    ${kpi('Mean time to remediate', m.mttr != null ? `${m.mttr}<small> days</small>` : 'n/a', pm ? qdelta(m.mttr, pm.mttr, false, 'd') : '', 'critical and high')}
+    ${kpi('Fixed within SLA', m.sla != null ? `${m.sla}<small>%</small>` : 'n/a', pm ? qdelta(m.sla, pm.sla, true, '%') : '', 'critical and high')}
+  </div>
+  <div class="qstrip">
+    <div><span class="w-subl">Introduced</span><b>${fmtC(m.intro)}</b></div>
+    <div><span class="w-subl">Net change</span><b class="${m.net > 0 ? 'up' : 'down'}">${m.net > 0 ? '+' : ''}${fmtC(m.net)}</b></div>
+    <div><span class="w-subl">Remediation rate</span><b>${m.rate}%</b></div>
+    <div><span class="w-subl">Open at quarter end</span><b>${fmtC(m.openEnd)}</b></div>
+    <div><span class="w-subl">On CISA KEV at end</span><b>${fmt(m.kevEnd)}</b></div>
+  </div>
+  <div class="grid2">
+    <section class="panel"><h2>Introduced vs remediated</h2><p class="sub">Per quarter. Remediated bars taller than introduced means the backlog is shrinking.</p>${qBars(shown)}</section>
+    <section class="panel"><h2>Need action, week by week</h2><p class="sub">The number leadership should watch. Shaded bands mark quarters.</p>${qLine(shown)}</section>
+  </div>
+  <section class="panel" style="margin-top:20px"><h2>Tribe scorecard</h2><p class="sub">${esc(q.label)}${q.current ? ' so far' : ''}. Status compares need-action items at the start and end of the quarter.</p>
+    <div class="scroll"><table><thead><tr><th>Tribe</th><th class="num">Need action</th><th class="num">Remediated</th><th class="num">Introduced</th><th class="num">Rate</th><th class="num">MTTR (crit/high)</th><th class="num">Within SLA</th><th>Status</th></tr></thead><tbody>${tribeRows}</tbody></table></div>
+  </section>
+  <section class="panel"><h2>Time to remediate by severity</h2><p class="sub">Average days from first detection to the scan where the finding disappeared, with the share fixed inside the SLA target.</p>
+    <div class="scroll"><table><thead><tr><th>Severity</th><th class="num">SLA target</th>${shown.map(x => `<th class="num${x.key === q.key ? ' qcol' : ''}">${esc(x.label)}</th>`).join('')}</tr></thead><tbody>
+    ${SEVS.map(sv => `<tr><td><span class="sw ${sv}"></span>${sv}</td><td class="num muted">${SLA_DAYS[sv]} days</td>${shown.map(x => { const b = x.m.bySev[sv]; return `<td class="num${x.key === q.key ? ' qcol' : ''}">${b.mttr != null ? `${b.mttr}d <span class="${b.sla >= 80 ? 'down' : b.sla >= 50 ? '' : 'up'} small">${b.sla}%</span>` : '<span class="zero">n/a</span>'}</td>`; }).join('')}</tr>`).join('')}
+    </tbody></table></div>
+    <p class="small muted" style="margin:12px 0 0">A finding counts as remediated when it no longer appears in the next weekly scan of the same source, which also includes decommissioned assets. SLA targets: critical ${SLA_DAYS.Critical}, high ${SLA_DAYS.High}, medium ${SLA_DAYS.Medium}, low ${SLA_DAYS.Low} days.</p>
+  </section>`;
+}
+function quarterlyCsv() {
+  const list = quarters(), q = list.find(x => x.key === S.qsel) || list[list.length - 1];
+  const L = [['Quarter', 'Range', 'Weeks', 'In progress', 'Need action start', 'Need action end', 'Introduced', 'Remediated', 'Net change', 'Remediation rate %', 'MTTR crit/high days', 'Within SLA crit/high %', 'Open at end', 'KEV at end'].join(',')];
+  for (const x of list) { const m = x.m; L.push([x.label, x.range, x.weeks.length, x.current ? 'Yes' : 'No', m.actStart, m.actEnd, m.intro, m.rem, m.net, m.rate, m.mttr ?? '', m.sla ?? '', m.openEnd, m.kevEnd].map(csvEsc).join(',')); }
+  L.push('', `Tribe scorecard for ${q.label}`, ['Tribe', 'Need action start', 'Need action end', 'Introduced', 'Remediated', 'Remediation rate %', 'MTTR crit/high days', 'Within SLA crit/high %'].join(','));
+  for (const [t, m] of Object.entries(q.t)) L.push([t, m.actStart, m.actEnd, m.intro, m.rem, m.rate, m.mttr ?? '', m.sla ?? ''].map(csvEsc).join(','));
+  return L.join('\r\n');
+}
+
+function openReport() {
+  const r = $('#report');
+  S.reportReturn = document.activeElement; S.reportOpen = true;
+  renderReport(); r.hidden = false; document.body.classList.add('report-open');
+  requestAnimationFrame(() => requestAnimationFrame(() => r.classList.add('open')));
+  r.scrollTop = 0; $('#reportPanel').focus({ preventScroll: true });
+}
+function renderReport() { $('#reportBody').innerHTML = reportHtml(); animateCounts($('#reportBody')); }
+function closeReport() {
+  const r = $('#report'); if (r.hidden) return;
+  S.reportOpen = false; r.classList.remove('open'); document.body.classList.remove('report-open');
+  setTimeout(() => { if (!r.classList.contains('open')) r.hidden = true; }, reduceMotion() ? 0 : 300);
+  if (S.reportReturn && S.reportReturn.isConnected) S.reportReturn.focus({ preventScroll: true });
+}
+
+/* ---------- Tribes ---------- */
+function tribeGroups() {
+  const D = compute();
+  const groups = new Map();
+  const ensure = (t) => { if (!groups.has(t)) groups.set(t, new Map()); return groups.get(t); };
+  TRIBES.forEach(ensure);
+  for (const e of S.registry) {
+    const g = ensure(e.tribe);
+    g.set(e.apm, { apm: e.apm, app: e.app, list: [] });
+  }
+  for (const v of D.current) {
+    const g = ensure(v.tribe), k = appKey(v);
+    if (!g.has(k)) g.set(k, { apm: v.apm, app: v.app, list: [] });
+    g.get(k).list.push(v);
+  }
+  const order = [...TRIBES, ...[...groups.keys()].filter(t => !TRIBES.includes(t) && t !== 'Unmapped').sort(), 'Unmapped'];
+  return order.filter(t => groups.has(t) && (t !== 'Unmapped' || [...groups.get(t).values()].some(a => a.list.length)))
+    .map(t => { const apps = [...groups.get(t).values()]; return { tribe: t, apps, all: apps.flatMap(a => a.list) }; });
+}
+function viewTribes() {
+  const G = tribeGroups(), D = compute(), TT = D.tribeTrend, nW = D.trend.length;
+  const top3 = G.filter(g => TRIBES.includes(g.tribe));
+  const mix = (c, n) => `<span class="minibar">${SEVS.filter(s => c[s]).map(s => `<span style="flex:${c[s]};background:var(--${SEV_VAR[s]})"></span>`).join('')}</span>`;
+  const cards = top3.map(g => {
+    const c = sevCounts(g.all), n = g.all.length, tr = D.tribeActTrend[g.tribe] || [], act = g.all.filter(v => v.tier === 'act').length;
+    return `<button data-action="jumptribe" data-v="${esc(g.tribe)}"><span class="tile-top"><span class="t">${esc(g.tribe)}</span>${nW > 1 ? delta(tr[nW - 1] || 0, tr[nW - 2] || 0) : ''}</span>
+      <div class="n">${cnt(act)} <span class="n-sub">need action</span></div>${spark(tr, 'var(--crit)', 30)}${n ? mix(c, n) : '<span class="minibar"></span>'}
+      <div class="small muted">${fmt(g.all.filter(v => v.tier === 'plan').length)} to plan, ${fmtC(n)} open across ${g.apps.length} apps</div></button>`;
+  }).join('');
+  const sections = G.map(g => {
+    const rows = g.apps.map(a => ({ ...a, c: sevCounts(a.list), act: a.list.filter(v => v.tier === 'act').length, kev: a.list.filter(v => v.kev).length, nw: a.list.filter(v => v.status === 'New').length, top: a.list.reduce((m, v) => Math.max(m, v.score), 0) }))
+      .sort((x, y) => y.act - x.act || y.top - x.top);
+    const tc = sevCounts(g.all);
+    return `<section class="panel" id="tribe-${esc(g.tribe.replace(/\W/g, ''))}">
+      <div class="tribehead"><h2>${esc(g.tribe)}</h2><span class="muted">${fmt(g.all.filter(v => v.tier === 'act').length)} need action, ${fmtC(g.all.length)} open across ${rows.length} application${rows.length === 1 ? '' : 's'}</span><span class="spacer"></span><button class="link" data-action="gotribe" data-v="${esc(g.tribe)}">Open in table</button></div>
+      ${g.tribe === 'Unmapped' ? '<p class="sub">These findings have no tribe column and no APM ID that matches the registry. Add the APM IDs in Admin to assign them.</p>' : ''}
+      <div class="scroll"><table><thead><tr><th>Application</th><th>APM ID</th><th class="num">Act now</th><th style="width:120px">Mix</th>${SEVS.map(s => `<th class="num"><span class="sw ${s}"></span>${s}</th>`).join('')}<th class="num">Total</th><th class="num">KEV</th><th class="num">New</th><th>Top score</th></tr></thead><tbody>
+      ${rows.map(a => `<tr class="click" data-action="goapp" data-v="${esc(a.apm || 'app:' + a.app)}" tabindex="0"><td><b>${esc(a.app)}</b></td><td class="mono">${esc(a.apm || '')}</td><td class="num">${a.act ? `<b class="tb-act">${a.act}</b>` : cnum(0)}</td><td>${a.list.length ? mix(a.c, a.list.length) : ''}</td>${SEVS.map(s => `<td class="num">${cnum(a.c[s])}</td>`).join('')}<td class="num"><b>${cnum(a.list.length)}</b></td><td class="num">${a.kev ? `<span class="flag kev">${a.kev}</span>` : cnum(0)}</td><td class="num">${cnum(a.nw)}</td><td>${a.list.length ? scoreCell(a.top) : '<span class="clean">Clean</span>'}</td></tr>`).join('')}
+      <tr class="total"><td>Tribe total</td><td></td><td class="num">${fmt(g.all.filter(v => v.tier === 'act').length)}</td><td></td>${SEVS.map(s => `<td class="num">${cnum(tc[s])}</td>`).join('')}<td class="num">${fmt(g.all.length)}</td><td class="num">${fmt(g.all.filter(v => v.kev).length)}</td><td class="num">${fmt(g.all.filter(v => v.status === 'New').length)}</td><td></td></tr>
+      </tbody></table></div></section>`;
+  }).join('');
+  return `${sampleNotice()}<h1>Tribes and applications</h1><p class="lede">Open findings for each tribe and application, matched by APM ID. Select an application to see its findings.</p>
+    <div class="tribes">${cards}</div>${sections}`;
+}
+
+/* ---------- Vulnerabilities table ---------- */
+function viewVulns() {
+  const D = compute(), f = S.f;
+  const tribes = [...new Set(D.current.map(v => v.tribe))].sort();
+  const apps = [...new Map(D.current.map(v => [appKey(v), v])).values()].sort((a, b) => a.app.localeCompare(b.app));
+  const opt = (v, l, sel) => `<option value="${esc(v)}"${sel === v ? ' selected' : ''}>${esc(l)}</option>`;
+  return `${sampleNotice()}<h1>Vulnerabilities</h1>
+  <p class="lede">Every open finding, highest priority first.</p>
+  <div class="panel">
+    <div class="filters">
+      <label class="f q">Search<input type="search" id="fq" placeholder="CVE, asset, package or application" value="${esc(f.q)}"></label>
+      <label class="f">Source<select data-filter="source">${opt('', 'All sources', f.source)}${SOURCES.map(s => opt(s, SOURCE_LABEL[s], f.source)).join('')}</select></label>
+      <label class="f">Tribe<select data-filter="tribe">${opt('', 'All tribes', f.tribe)}${tribes.map(t => opt(t, t, f.tribe)).join('')}</select></label>
+      <label class="f">Application<select data-filter="app">${opt('', 'All applications', f.app)}${apps.map(a => opt(appKey(a), a.app + (a.apm ? ' (' + a.apm + ')' : ''), f.app)).join('')}</select></label>
+      <label class="f">Priority<select data-filter="tier">${opt('', 'All priorities', f.tier)}${TIERS.map(t => opt(t.id, t.label, f.tier)).join('')}</select></label>
+      <label class="f">Status<select data-filter="status">${opt('', 'Any status', f.status)}${['New', 'Persisting', 'Baseline'].map(s => opt(s, s, f.status)).join('')}</select></label>
+    </div>
+    <div class="row" style="margin-bottom:6px">
+      <span class="small muted" id="sevlabel">Severity</span>
+      <span class="row" role="group" aria-labelledby="sevlabel" style="gap:6px">${SEVS.map(s => `<button class="chip" data-action="sevchip" data-v="${s}" aria-pressed="${f.sev.has(s)}"><span class="sw ${s}"></span>${s}</button>`).join('')}</span>
+      <label class="check"><input type="checkbox" data-filter="kev"${f.kev ? ' checked' : ''}> CISA KEV only</label>
+      <label class="check"><input type="checkbox" data-filter="exp"${f.exp ? ' checked' : ''}> Known exploit only</label>
+    </div>
+    <p class="small muted" style="margin:14px 0 0">Priority score: severity (up to 35) + CVSS × 2 (up to 20) + known exploit (15) + CISA KEV (20) + age (1 point per 9 days, up to 10).</p>
+  </div>
+  <div id="tableRegion"></div>`;
+}
+function applyFilters(list) {
+  const f = S.f, q = f.q.trim().toLowerCase();
+  return list.filter(v => (!f.sev.size || f.sev.has(v.sev)) && (!f.source || v.source === f.source) && (!f.tribe || v.tribe === f.tribe)
+    && (!f.app || appKey(v) === f.app) && (!f.kev || v.kev) && (!f.exp || v.exp) && (!f.status || v.status === f.status) && (!f.tier || v.tier === f.tier)
+    && (!q || (v.id + ' ' + v.asset + ' ' + v.pkg + ' ' + v.app + ' ' + v.apm + ' ' + v.title).toLowerCase().includes(q)));
+}
+const SORTERS = {
+  score: v => v.score, id: v => v.id, sev: v => 4 - SEVS.indexOf(v.sev), cvss: v => v.cvss ?? -1, asset: v => v.asset.toLowerCase(),
+  app: v => v.app.toLowerCase(), tribe: v => v.tribe, source: v => v.source, age: v => v.age, status: v => v.status,
+};
+function sortedFiltered() {
+  const list = applyFilters(compute().current), g = SORTERS[S.sort.key], d = S.sort.dir;
+  return list.slice().sort((a, b) => { const x = g(a), y = g(b); return (x < y ? -1 : x > y ? 1 : 0) * d || (b.score - a.score); });
+}
+function renderTableRegion() {
+  const el = $('#tableRegion'); if (!el) return;
+  const list = sortedFiltered(), n = list.length, pages = Math.max(1, Math.ceil(n / S.pageSize));
+  if (S.page >= pages) S.page = pages - 1;
+  const slice = list.slice(S.page * S.pageSize, (S.page + 1) * S.pageSize);
+  const th = (k, l, cls = '') => `<th class="${cls}"${S.sort.key === k ? ` aria-sort="${S.sort.dir > 0 ? 'ascending' : 'descending'}"` : ''}><button class="sort" data-action="sort" data-v="${k}"${S.sort.key === k ? ` data-dir="${S.sort.dir > 0 ? '▲' : '▼'}"` : ''}>${l}</button></th>`;
+  const active = activeFilterCount();
+  el.innerHTML = `<div class="resultbar"><b>${fmt(n)}</b><span class="muted">of ${fmt(compute().current.length)} open vulnerabilities</span>
+      ${active ? `<button class="link" data-action="clearfilters">Clear filters</button>` : ''}<span class="spacer"></span>
+      <button class="btn ghost" data-action="copycsv"${n ? '' : ' disabled'}>Copy as CSV</button>
+      <button class="btn" data-action="export"${n ? '' : ' disabled'}>Export ${fmt(n)} rows to CSV</button></div>
+    <div class="panel" style="padding:0">
+    ${n ? `<div class="scroll"><table class="hov"><thead><tr>${th('score', 'Score')}${th('id', 'ID')}${th('sev', 'Severity')}${th('cvss', 'CVSS', 'num')}<th>Flags</th>${th('asset', 'Asset')}${th('app', 'Application')}${th('source', 'Source')}${th('age', 'Age', 'num')}${th('status', 'Status')}<th>Fix</th></tr></thead><tbody>
+      ${slice.map(v => `<tr class="click" data-action="openvuln" data-v="${esc(v.uid)}" data-ctx="table" tabindex="0"><td>${scoreCell(v.score)}</td><td class="mono" style="white-space:nowrap">${esc(v.id)}</td><td style="white-space:nowrap">${sevCell(v.sev)}</td><td class="num">${v.cvss ?? '<span class="zero">n/a</span>'}</td><td style="white-space:nowrap">${flags(v)}</td>
+      <td class="asset">${esc(v.asset)}${v.pkg ? `<div class="small muted">${esc(v.pkg)}${v.ver ? ' ' + esc(v.ver) : ''}</div>` : ''}</td>
+      <td style="min-width:140px">${esc(v.app)}<div class="small muted">${esc(v.tribe)}${v.apm ? ' <span class="mono">' + esc(v.apm) + '</span>' : ''}</div></td><td>${v.source === 'WIZ' ? 'WIZ' : 'Container'}</td><td class="num">${v.age}d</td><td>${esc(v.status)}</td><td class="small">${v.fix ? esc(v.fix) : '<span class="zero">None listed</span>'}</td></tr>`).join('')}
+    </tbody></table></div>` : `<p style="padding:22px">No vulnerabilities match these filters. <button class="link" data-action="clearfilters">Clear filters</button></p>`}
+    </div>
+    ${pages > 1 ? `<div class="pager"><button class="btn ghost" data-action="page" data-v="${S.page - 1}"${S.page === 0 ? ' disabled' : ''}>Previous</button><span>Page ${S.page + 1} of ${pages}</span><button class="btn ghost" data-action="page" data-v="${S.page + 1}"${S.page >= pages - 1 ? ' disabled' : ''}>Next</button></div>` : ''}`;
+}
+function activeFilterCount() { const f = S.f; return (f.q ? 1 : 0) + f.sev.size + (f.source ? 1 : 0) + (f.tribe ? 1 : 0) + (f.app ? 1 : 0) + (f.kev ? 1 : 0) + (f.exp ? 1 : 0) + (f.status ? 1 : 0) + (f.tier ? 1 : 0); }
+function resetFilters() { S.f = { q: '', sev: new Set(), source: '', tribe: '', app: '', kev: false, exp: false, status: '', tier: '' }; S.page = 0; }
+function goFiltered(patch) { closeReport(); resetFilters(); Object.assign(S.f, patch); S.tab = 'vulns'; render(); window.scrollTo(0, 0); }
+
+/* ---------- Detail sheet ---------- */
+const partFmt = x => Number.isInteger(x) ? x : x.toFixed(1);
+function advisoryLink(id) {
+  if (/^CVE-/i.test(id)) return ['View on NVD', 'https://nvd.nist.gov/vuln/detail/' + encodeURIComponent(id)];
+  if (/^GHSA-/i.test(id)) return ['View GitHub advisory', 'https://github.com/advisories/' + encodeURIComponent(id)];
+  return null;
+}
+function openSheet(uid, list) {
+  const sh = $('#sheet');
+  S.sheetList = list; S.sheetUid = uid;
+  if (sh.hidden) { S.sheetReturn = document.activeElement; sh.hidden = false; document.body.style.overflow = 'hidden'; requestAnimationFrame(() => requestAnimationFrame(() => sh.classList.add('open'))); }
+  renderSheet();
+  $('#sheetPanel').focus({ preventScroll: true });
+}
+function closeSheet() {
+  const sh = $('#sheet'); if (sh.hidden) return;
+  sh.classList.remove('open'); document.body.style.overflow = '';
+  setTimeout(() => { if (!sh.classList.contains('open')) sh.hidden = true; }, reduceMotion() ? 0 : 380);
+  const r = S.sheetReturn; S.sheetUid = null;
+  if (r && r.isConnected) r.focus({ preventScroll: true });
+}
+function stepSheet(d) {
+  const i = S.sheetList.indexOf(S.sheetUid), j = i + d;
+  if (i < 0 || j < 0 || j >= S.sheetList.length) return;
+  S.sheetUid = S.sheetList[j]; renderSheet();
+}
+function renderSheet() {
+  const D = compute(), v = D.byUid.get(S.sheetUid);
+  if (!v) { closeSheet(); return; }
+  const parts = scoreParts(v), i = S.sheetList.indexOf(v.uid), n = S.sheetList.length;
+  const others = D.current.filter(x => x.id === v.id && x.uid !== v.uid).sort((a, b) => b.score - a.score);
+  const link = advisoryLink(v.id), C = 2 * Math.PI * 34, ringCol = v.score >= 80 ? 'crit' : v.score >= 60 ? 'high' : v.score >= 40 ? 'med' : 'low';
+  const fact = (k, val, mono) => val ? `<div><dt>${k}</dt><dd${mono ? ' class="mono"' : ''}>${esc(val)}</dd></div>` : '';
+  $('#sheetPanel').innerHTML = `
+    <div class="grabber" aria-hidden="true"></div>
+    <div class="sh-head"><span class="sevpill ${v.sev}"><span class="sw ${v.sev}"></span>${v.sev}</span><span class="sevpill"><span class="sw" style="background:${TIERS.find(t => t.id === v.tier).color}"></span>${TIER_LABEL[v.tier]}</span>${flags(v).includes('zero') ? '' : flags(v)}<span class="spacer"></span>
+      <button class="icon-btn" data-action="closesheet" aria-label="Close details"><svg width="14" height="14" viewBox="0 0 14 14"><path d="M2 2l10 10M12 2L2 12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button></div>
+    <div class="sh-body" id="sheetBody">
+      <h2 id="sheetTitle" class="sh-id">${esc(v.id)}</h2>
+      <p class="sub" style="margin-bottom:22px">${esc(v.title || [v.pkg, v.ver].filter(Boolean).join(' ') + (v.pkg ? ' on ' : '') + v.asset)}</p>
+      <div class="sh-score">
+        <div class="ring"><svg viewBox="0 0 80 80" aria-hidden="true"><circle cx="40" cy="40" r="34" style="stroke:var(--fill2)" stroke-width="8" fill="none"/>
+          <circle cx="40" cy="40" r="34" style="stroke:var(--${ringCol});--c:${C.toFixed(1)}" stroke-width="8" fill="none" stroke-linecap="round" stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${(C * (1 - v.score / 100)).toFixed(1)}" transform="rotate(-90 40 40)" class="ring-arc"/></svg>
+          <span><b>${v.score}</b><small>of 100</small></span></div>
+        <div class="parts">${parts.map(p => `<div class="part"><span class="pl">${p.label}<small>${esc(p.note)}</small></span><span class="pt"><i style="width:${p.val / p.max * 100}%"></i></span><span class="pv">${partFmt(p.val)}<small>/${p.max}</small></span></div>`).join('')}</div>
+      </div>
+      <h3 class="sh-h">Where it is</h3>
+      <dl class="facts">${fact('Asset', v.asset, true)}${fact('Package', v.pkg)}${fact('Installed', v.ver, true)}${fact('Fixed in', v.fix || 'No fix listed', true)}${fact('Application', v.app)}${fact('Tribe', v.tribe)}${fact('APM ID', v.apm, true)}${fact('Source', SOURCE_LABEL[v.source] || v.source)}</dl>
+      <h3 class="sh-h">Timeline</h3>
+      <dl class="facts">${fact('First seen', v.first ? fmtWeekLong(v.first) : '')}${fact('Open for', v.age + ' days')}${fact('Status', v.status)}${fact('Report week', fmtWeekLong(v.week))}</dl>
+      ${others.length ? `<h3 class="sh-h">Also found on ${others.length} other asset${others.length === 1 ? '' : 's'}</h3>
+        <div class="others">${others.slice(0, 8).map(o => `<button data-action="sheetgo" data-v="${esc(o.uid)}"><span class="asset">${esc(o.asset)}</span><span class="small muted">${esc(o.app)}</span><b>${o.score}</b></button>`).join('')}${others.length > 8 ? `<p class="small muted">and ${others.length - 8} more</p>` : ''}</div>` : ''}
+      <div class="row" style="margin-top:22px">
+        ${link ? `<a class="btn ghost" href="${link[1]}" target="_blank" rel="noopener noreferrer">${link[0]}</a>` : ''}
+        ${v.kev ? `<a class="btn ghost" href="https://www.cisa.gov/known-exploited-vulnerabilities-catalog" target="_blank" rel="noopener noreferrer">CISA KEV catalog</a>` : ''}
+        <button class="btn ghost" data-action="copyid" data-v="${esc(v.id)}">Copy ID</button>
+      </div>
+    </div>
+    <div class="sh-foot"><button class="btn ghost" data-action="sheetstep" data-v="-1"${i <= 0 ? ' disabled' : ''}>Previous</button><span class="spacer small muted" style="text-align:center">${i >= 0 ? `${fmt(i + 1)} of ${fmt(n)}` : ''}</span><button class="btn ghost" data-action="sheetstep" data-v="1"${i < 0 || i >= n - 1 ? ' disabled' : ''}>Next</button></div>`;
+  $('#sheetBody').scrollTop = 0;
+}
+
+/* ---------- CSV export ---------- */
+function csvEsc(v) {
+  let s = String(v ?? '');
+  if (/^[=+\-@\t\r]/.test(s)) s = "'" + s; // prevent spreadsheet formula injection from scanner-supplied text
+  return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+function buildCsv(list) {
+  const head = ['Priority group', 'Priority score', 'Vulnerability ID', 'Severity', 'CVSS', 'Known exploit', 'CISA KEV', 'Age (days)', 'First seen', 'Status', 'Source', 'Tribe', 'Application', 'APM ID', 'Asset', 'Package', 'Installed version', 'Fixed version', 'Report week', 'Title'];
+  const lines = [head.join(',')];
+  for (const v of list) lines.push([TIER_LABEL[v.tier], v.score, v.id, v.sev, v.cvss ?? '', v.exp ? 'Yes' : 'No', v.kev ? 'Yes' : 'No', v.age, v.first || '', v.status, SOURCE_LABEL[v.source] || v.source, v.tribe, v.app, v.apm, v.asset, v.pkg, v.ver, v.fix, v.week, v.title].map(csvEsc).join(','));
+  return lines.join('\r\n');
+}
+function download(name, content, mime) {
+  const blob = content instanceof Blob ? content : new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob), a = document.createElement('a');
+  a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 3000);
+}
+
+/* ---------- Admin ---------- */
+function viewAdmin() {
+  if (!S.authed) {
+    const locked = Date.now() < S.lockUntil;
+    return `<div class="panel login">
+      <div class="lock"><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10.5" width="14" height="10" rx="2.5" fill="var(--accent)"/><path d="M8 10.5V8a4 4 0 018 0v2.5" fill="none" stroke="var(--accent)" stroke-width="2"/></svg></div>
+      <h2>Admin sign in</h2><p class="sub" style="margin:4px auto 20px">Upload weekly reports and manage the application registry.</p>
+      <label class="sr" for="pw">Admin password</label>
+      <input type="password" id="pw" placeholder="Password" autocomplete="current-password"${locked ? ' disabled' : ''}>
+      <button class="btn" style="width:100%;margin-top:12px;padding:11px" data-action="login"${locked ? ' disabled' : ''}>Sign in</button>
+      <p class="small ${S.loginErr ? 'up' : 'muted'}" id="loginmsg" style="margin:10px 0 0">${esc(S.loginErr || '')}${S.auth?.isDefault ? `${S.loginErr ? ' ' : ''}The password is still the default, <span class="mono">${DEFAULT_PW}</span>. Change it after signing in.` : ''}</p>
+    </div>`;
+  }
+  const p = S.pending;
+  const hist = S.uploads.slice().sort((a, b) => b.week.localeCompare(a.week) || a.source.localeCompare(b.source));
+  const preview = p ? (() => {
+    const r = p.parsed, c = sevCounts(r.rows);
+    const reg = new Set(S.registry.map(e => e.apm.toUpperCase()));
+    const unmapped = r.rows.filter(x => !x.tribe && !(x.apm && reg.has(x.apm.toUpperCase()))).length;
+    const replaces = S.uploads.some(u => u.source === p.source && u.week === p.week);
+    return `<div class="panel" style="box-shadow:0 0 0 2px var(--accent)">
+      <h3>Check before saving: ${esc(p.fileName)}</h3>
+      <p class="sub">${fmt(r.rows.length)} vulnerabilities read from ${fmt(r.total)} rows (header on row ${r.headerRow}). ${r.skipped ? fmt(r.skipped) + ' rows had no vulnerability ID and were skipped. ' : ''}${r.dup ? fmt(r.dup) + ' duplicate rows were merged.' : ''}</p>
+      <p class="sub">${SEVS.map(s => `<span class="sw ${s}"></span>${s} ${fmt(c[s])}`).join('&nbsp;&nbsp; ')}&nbsp;&nbsp; KEV ${fmt(r.rows.filter(x => x.kev).length)}&nbsp;&nbsp; Exploit ${fmt(r.rows.filter(x => x.exp).length)}</p>
+      <h3 style="margin-top:14px">Columns found</h3>
+      <div class="maplist">${Object.keys(FIELD_LABEL).map(f => `<div class="${r.mapping[f] ? '' : 'miss'}">${FIELD_LABEL[f]}: ${r.mapping[f] ? `<b>${esc(r.mapping[f])}</b>` : 'not found'}</div>`).join('')}</div>
+      ${unmapped ? `<div class="notice" style="margin-bottom:14px">${fmt(unmapped)} findings have no tribe and no APM ID in the registry. They'll show as Unmapped until you add their APM IDs below.</div>` : ''}
+      ${replaces ? `<div class="notice" style="margin-bottom:14px">This replaces the existing ${esc(SOURCE_LABEL[p.source])} upload for the week of ${esc(fmtWeekLong(p.week))}.</div>` : ''}
+      <div class="row"><button class="btn" data-action="saveupload">Save upload</button><button class="btn ghost" data-action="cancelupload">Cancel</button></div>
+    </div>`;
+  })() : '';
+
+  return `<div class="row" style="align-items:baseline"><h1>Admin</h1><span class="spacer"></span><button class="link" data-action="logout">Sign out</button></div>
+  <p class="lede">Upload one report per source each week. Uploading the same source and week again replaces it. ${hasStore() ? '' : '<b>Persistent storage isn\'t available here, so uploads last only until you reload.</b>'}</p>
+  <section class="panel"><h2>Upload a report</h2><p class="sub">WIZ exports are usually XLSX and container scans CSV, but either format works for either source.</p>
+    <div class="filters">
+      <label class="f">Source<select id="upsrc">${SOURCES.map(s => `<option value="${s}"${(p?.source || S.upSrc || 'WIZ') === s ? ' selected' : ''}>${SOURCE_LABEL[s]}</option>`).join('')}</select></label>
+      <label class="f">Report week (any day in the week)<input type="date" id="upweek" value="${esc(p?.week || S.upWeek || mondayOf(TODAY))}"></label>
+    </div>
+    <label class="drop" id="drop"><svg width="30" height="30" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V5m0 0l-4 4m4-4l4 4M5 15v2.5A1.5 1.5 0 006.5 19h11a1.5 1.5 0 001.5-1.5V15" fill="none" stroke="var(--accent)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg><b>Choose a file or drop it here</b><span class="small muted">.xlsx, .xls or .csv, up to about 20,000 findings per file</span><input type="file" id="upfile" accept=".xlsx,.xls,.xlsm,.csv,.tsv,.txt"></label>
+    <p class="small up" id="uperr" style="margin:10px 0 0">${esc(S.upErr || '')}</p>
+  </section>
+  ${preview}
+  <section class="panel"><h2>Upload history</h2>
+    ${hist.length ? `<div class="scroll"><table><thead><tr><th>Week of</th><th>Source</th><th>File</th><th class="num">Findings</th><th>Uploaded</th><th></th></tr></thead><tbody>
+      ${hist.map(u => `<tr><td>${esc(fmtWeekLong(u.week))}</td><td>${esc(SOURCE_LABEL[u.source])}</td><td class="asset">${esc(u.fileName)}</td><td class="num">${fmt(u.rowCount)}</td><td class="small">${esc(new Date(u.uploadedAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' }))}</td><td class="num"><button class="btn danger" data-action="delupload" data-v="${esc(u.id)}" data-confirm="Click again to delete">Delete</button></td></tr>`).join('')}
+    </tbody></table></div>` : '<p class="sub">Nothing uploaded yet, so the dashboard is showing sample data.</p>'}
+  </section>
+  <section class="panel regtable"><h2>Application registry</h2>
+    <p class="sub">Maps APM IDs to application names and tribes. The dashboard reads APM IDs from an APM ID column, or from tags, asset names or application names containing text like "APM0101". A Tribe column in the file takes precedence.</p>
+    <div class="scroll"><table><thead><tr><th style="width:22%">APM ID</th><th>Application</th><th style="width:24%">Tribe</th><th></th></tr></thead><tbody id="regbody">
+      ${S.registry.map((e, i) => regRow(e, i)).join('')}
+    </tbody></table></div>
+    <div class="row" style="margin-top:12px"><button class="btn ghost" data-action="regadd">Add application</button><button class="btn" data-action="regsave">Save registry</button><span class="small up" id="regerr"></span></div>
+  </section>
+  <div class="grid2">
+    <section class="panel"><h2>Sample files</h2><p class="sub">Example exports in the format the parser expects. Useful for testing the upload flow or sharing with whoever runs the scans.</p>
+      <div class="row"><button class="btn ghost" data-action="samplewiz">Download WIZ sample (.xlsx)</button><button class="btn ghost" data-action="samplectr">Download container sample (.csv)</button></div></section>
+    <section class="panel"><h2>Password</h2><p class="sub">Stored as a SHA-256 hash. This protects the admin screens in this browser tool; it is not a substitute for server-side access control.</p>
+      <div class="filters"><label class="f">New password<input type="password" id="pw1" autocomplete="new-password"></label><label class="f">Confirm<input type="password" id="pw2" autocomplete="new-password"></label><button class="btn" data-action="pwchange">Change password</button></div>
+      <p class="small" id="pwmsg"></p></section>
+  </div>
+  <section class="panel"><h2>Delete all data</h2><p class="sub">Removes every upload. The registry and password are kept, and the dashboard goes back to sample data.</p>
+    <button class="btn danger" data-action="wipe" data-confirm="Click again to delete every upload"${S.uploads.length ? '' : ' disabled'}>Delete all uploads</button></section>`;
+}
+function regRow(e, i) {
+  const tribes = [...new Set([...TRIBES, e.tribe].filter(Boolean))];
+  return `<tr data-reg="${i}"><td><input type="text" data-k="apm" value="${esc(e.apm)}" aria-label="APM ID"></td><td><input type="text" data-k="app" value="${esc(e.app)}" aria-label="Application name"></td>
+    <td><select data-k="tribe" aria-label="Tribe">${tribes.map(t => `<option${t === e.tribe ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select></td><td class="num"><button class="link" data-action="regdel" data-v="${i}">Remove</button></td></tr>`;
+}
+function readRegistryForm() {
+  return [...document.querySelectorAll('#regbody tr')].map(tr => ({
+    apm: tr.querySelector('[data-k=apm]').value.trim().toUpperCase(),
+    app: tr.querySelector('[data-k=app]').value.trim(),
+    tribe: tr.querySelector('[data-k=tribe]').value,
+  }));
+}
+async function handleFile(file) {
+  S.upErr = ''; S.upSrc = $('#upsrc').value; S.upWeek = $('#upweek').value;
+  if (!S.upWeek) { S.upErr = 'Pick the report week first.'; render(); return; }
+  try {
+    const aoa = await readFileToAoa(file);
+    const parsed = parseAoa(aoa);
+    if (parsed.error) { S.upErr = parsed.error; render(); return; }
+    if (!parsed.rows.length) { S.upErr = 'No vulnerabilities were found in this file.'; render(); return; }
+    S.pending = { source: S.upSrc, week: mondayOf(parseYmd(S.upWeek)), fileName: file.name, parsed };
+  } catch (e) { S.upErr = 'Could not read ' + file.name + ': ' + (e.message || e); }
+  render();
+}
+
+/* =========================================================
+   Events
+   ========================================================= */
+const armed = new WeakMap();
+document.addEventListener('click', async ev => {
+  const el = ev.target.closest('[data-action]'); if (!el || el.disabled) return;
+  if (el.closest('.wgrid.editing') && !/^w(remove|move|size|gallery)$/.test(el.dataset.action)) return;
+  const a = el.dataset.action, v = el.dataset.v;
+  if (el.dataset.confirm && !el.classList.contains('armed')) {
+    armed.set(el, el.textContent); el.textContent = el.dataset.confirm; el.classList.add('armed');
+    setTimeout(() => { if (el.isConnected && el.classList.contains('armed')) { el.textContent = armed.get(el); el.classList.remove('armed'); } }, 4000);
+    return;
+  }
+  switch (a) {
+    case 'tab': S.editing = false; S.tab = v; render(); window.scrollTo(0, 0); break;
+    case 'gokev': goFiltered({ kev: true }); break;
+    case 'gotier': goFiltered({ tier: v }); break;
+    case 'report': openReport(); break;
+    case 'closereport': closeReport(); break;
+    case 'qsel': S.qsel = v; renderReport(); break;
+    case 'qfy': { const fy = v === '1'; if (fy !== S.qfy) { S.qfy = fy; S.qsel = null; store.set(NS + 'qfy', fy ? '1' : '0'); renderReport(); if (S.tab === 'overview') renderGrid(false); } break; }
+    case 'qprint': try { window.print(); } catch (e) { toast('Printing is blocked here. Use Download CSV instead.'); } break;
+    case 'qcsv': { const q = quarters().find(x => x.key === S.qsel); download(`quarterly-review-${(q ? q.label : 'all').replace(/\s+/g, '-')}.csv`, '\ufeff' + quarterlyCsv(), 'text/csv;charset=utf-8'); toast('Quarterly CSV downloaded'); break; }
+    case 'goexp': goFiltered({ exp: true }); break;
+    case 'goaging': S.sort = { key: 'age', dir: -1 }; goFiltered({ sev: new Set(['Critical', 'High']) }); break;
+    case 'gopkg': goFiltered({ q: v }); break;
+    case 'wedit': S.editing = true; render(); break;
+    case 'wdone': S.editing = false; render(); toast('Layout saved'); break;
+    case 'wreset': S.layout = DEFAULT_LAYOUT.map(w => ({ ...w })); saveLayout(); renderGrid(true); toast('Layout reset'); break;
+    case 'wgallery': openGallery(); break;
+    case 'closegallery': closeGallery(); break;
+    case 'wadd': { const d = WIDGETS[v]; S.layout.push({ id: v, size: d.sizes[0] }); saveLayout(); closeGallery(); if (!S.editing) { S.editing = true; render(); } else renderGrid(true); toast(d.name + ' added'); setTimeout(() => document.querySelector(`.widget[data-key="${v}"]`)?.scrollIntoView({ behavior: reduceMotion() ? 'auto' : 'smooth', block: 'center' }), 60); break; }
+    case 'wremove': S.layout = S.layout.filter(w => w.id !== v); saveLayout(); renderGrid(true); break;
+    case 'wsize': { const [id, z] = v.split(':'); const w = S.layout.find(x => x.id === id); if (w) { w.size = z; saveLayout(); renderGrid(true); document.querySelector(`.widget[data-key="${id}"] [data-v="${v}"]`)?.focus(); } break; }
+    case 'wmove': { const [id, d] = v.split(':'); const i = S.layout.findIndex(x => x.id === id), j = i + (+d); if (i >= 0 && j >= 0 && j < S.layout.length) { const [w] = S.layout.splice(i, 1); S.layout.splice(j, 0, w); saveLayout(); renderGrid(true); document.querySelector(`.widget[data-key="${id}"] [data-v="${v}"]`)?.focus(); } break; }
+    case 'openvuln': openSheet(v, el.dataset.ctx === 'table' ? sortedFiltered().map(x => x.uid) : compute().current.map(x => x.uid)); break;
+    case 'sheetgo': { const l = S.sheetList.includes(v) ? S.sheetList : compute().current.map(x => x.uid); S.sheetList = l; S.sheetUid = v; renderSheet(); break; }
+    case 'sheetstep': stepSheet(+v); break;
+    case 'closesheet': closeSheet(); break;
+    case 'copyid': { try { await navigator.clipboard.writeText(v); toast('Copied ' + v); } catch (e) { toast('Clipboard access is blocked here'); } break; }
+    case 'gosev': goFiltered({ sev: new Set([v]) }); break;
+    case 'gostatus': goFiltered({ status: v }); break;
+    case 'gotribe': goFiltered({ tribe: v }); break;
+    case 'goapp': goFiltered({ app: v }); break;
+    case 'jumptribe': document.getElementById('tribe-' + v.replace(/\W/g, ''))?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); break;
+    case 'sevchip': { const s = S.f.sev; s.has(v) ? s.delete(v) : s.add(v); el.setAttribute('aria-pressed', s.has(v)); S.page = 0; renderTableRegion(); break; }
+    case 'sort': S.sort = S.sort.key === v ? { key: v, dir: -S.sort.dir } : { key: v, dir: (v === 'score' || v === 'sev' || v === 'cvss' || v === 'age') ? -1 : 1 }; renderTableRegion(); break;
+    case 'page': S.page = +v; renderTableRegion(); $('#tableRegion').scrollIntoView(); break;
+    case 'clearfilters': resetFilters(); render(); break;
+    case 'export': { const l = sortedFiltered(); download(`vulnerabilities-${localIso(TODAY)}.csv`, '\ufeff' + buildCsv(l), 'text/csv;charset=utf-8'); toast(`Exported ${fmt(l.length)} rows`); break; }
+    case 'copycsv': { try { await navigator.clipboard.writeText(buildCsv(sortedFiltered())); toast('CSV copied to clipboard'); } catch (e) { toast('Clipboard access is blocked here. Use Export instead.'); } break; }
+    case 'login': await doLogin(); break;
+    case 'logout': S.authed = false; S.pending = null; render(); break;
+    case 'saveupload': await saveUpload(); break;
+    case 'cancelupload': S.pending = null; render(); break;
+    case 'delupload': await deleteUpload(v); break;
+    case 'regadd': { S.registry = readRegistryForm(); S.registry.push({ apm: '', app: '', tribe: TRIBES[0] }); render(); document.querySelector('#regbody tr:last-child input')?.focus(); break; }
+    case 'regdel': { S.registry = readRegistryForm(); S.registry.splice(+v, 1); render(); break; }
+    case 'regsave': await saveRegistry(); break;
+    case 'pwchange': await changePw(); break;
+    case 'samplewiz': {
+      const ws = XLSX.utils.aoa_to_sheet(S.mock.raw.wiz), wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Vulnerabilities');
+      download('wiz-vulnerabilities-sample.xlsx', new Blob([XLSX.write(wb, { bookType: 'xlsx', type: 'array' })], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })); break;
+    }
+    case 'samplectr': download('container-scan-sample.csv', S.mock.raw.ctr.map(r => r.map(csvEsc).join(',')).join('\r\n'), 'text/csv'); break;
+    case 'wipe': await wipeAll(); break;
+  }
+});
+document.addEventListener('keydown', ev => {
+  if (!$('#gallery').hidden && ev.key === 'Escape') { ev.preventDefault(); closeGallery(); return; }
+  if (S.reportOpen && $('#sheet').hidden && ev.key === 'Escape') { ev.preventDefault(); closeReport(); return; }
+  if ((ev.key === 'Enter' || ev.key === ' ') && ev.target.matches('.widget.w-click')) { ev.preventDefault(); ev.target.click(); return; }
+  const open = !$('#sheet').hidden;
+  if (open) {
+    if (ev.key === 'Escape') { ev.preventDefault(); closeSheet(); return; }
+    if (!ev.target.matches('input,select,textarea')) {
+      if (ev.key === 'ArrowDown' || ev.key === 'ArrowRight' || ev.key === 'j') { ev.preventDefault(); stepSheet(1); return; }
+      if (ev.key === 'ArrowUp' || ev.key === 'ArrowLeft' || ev.key === 'k') { ev.preventDefault(); stepSheet(-1); return; }
+    }
+  }
+  if (ev.key === 'Enter' && ev.target.id === 'pw') doLogin();
+  if ((ev.key === 'Enter' || ev.key === ' ') && ev.target.matches('tr.click')) { ev.preventDefault(); ev.target.click(); }
+});
+document.addEventListener('focusin', ev => {
+  const sh = $('#sheet');
+  if (!sh.hidden && !sh.contains(ev.target)) $('#sheetPanel').focus({ preventScroll: true });
+  const gl = $('#gallery'); if (!gl.hidden && !gl.contains(ev.target)) $('#galleryPanel').focus({ preventScroll: true });
+  const rp = $('#report'); if (S.reportOpen && sh.hidden && !rp.contains(ev.target)) $('#reportPanel').focus({ preventScroll: true });
+  const g = ev.target.closest && ev.target.closest('.trend .wk'); if (g) showTip(g);
+});
+document.addEventListener('focusout', ev => { const g = ev.target.closest && ev.target.closest('.trend .wk'); if (g) hideTip(g.closest('.trend')); });
+document.addEventListener('pointerover', ev => { const g = ev.target.closest && ev.target.closest('.trend .wk'); if (g) showTip(g); });
+document.addEventListener('pointerout', ev => { const box = ev.target.closest && ev.target.closest('.trend svg'); if (box && !box.contains(ev.relatedTarget)) hideTip(box.closest('.trend')); });
+document.addEventListener('input', ev => {
+  if (ev.target.id === 'fq') { S.f.q = ev.target.value; S.page = 0; renderTableRegion(); }
+});
+document.addEventListener('change', ev => {
+  const t = ev.target;
+  if (t.dataset.filter) { S.f[t.dataset.filter] = t.type === 'checkbox' ? t.checked : t.value; S.page = 0; renderTableRegion(); }
+  if (t.id === 'upfile' && t.files[0]) handleFile(t.files[0]);
+});
+let dragEl = null, lastOver = null;
+document.addEventListener('dragstart', ev => {
+  const w = ev.target.closest && ev.target.closest('.wgrid.editing .widget'); if (!w) return;
+  dragEl = w; ev.dataTransfer.effectAllowed = 'move'; ev.dataTransfer.setData('text/plain', w.dataset.key);
+  requestAnimationFrame(() => w.classList.add('dragging'));
+});
+document.addEventListener('dragover', ev => {
+  if (!dragEl) return;
+  const t = ev.target.closest && ev.target.closest('.wgrid .widget'); if (!t) return;
+  ev.preventDefault();
+  if (t === dragEl || t === lastOver) return;
+  lastOver = t; setTimeout(() => { if (lastOver === t) lastOver = null; }, 450);
+  const grid = t.parentNode, first = new Map([...grid.children].map(el => [el.dataset.key, el.getBoundingClientRect()]));
+  const kids = [...grid.children], after = kids.indexOf(dragEl) < kids.indexOf(t);
+  grid.insertBefore(dragEl, after ? t.nextSibling : t);
+  flipAnimate(grid, first);
+});
+document.addEventListener('drop', ev => { if (dragEl && ev.target.closest && ev.target.closest('.wgrid')) ev.preventDefault(); });
+document.addEventListener('dragend', () => {
+  if (!dragEl) return;
+  const grid = dragEl.parentNode; dragEl.classList.remove('dragging'); dragEl = null; lastOver = null;
+  if (!grid) return;
+  const order = [...grid.children].map(el => el.dataset.key);
+  S.layout.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id)); saveLayout();
+});
+['dragover', 'dragleave', 'drop'].forEach(type => document.addEventListener(type, ev => {
+  const d = ev.target.closest && ev.target.closest('#drop'); if (!d) return;
+  ev.preventDefault();
+  if (type === 'dragover') d.classList.add('over');
+  else d.classList.remove('over');
+  if (type === 'drop' && ev.dataTransfer.files[0]) handleFile(ev.dataTransfer.files[0]);
+}));
+
+/* =========================================================
+   Admin actions
+   ========================================================= */
+async function doLogin() {
+  if (Date.now() < S.lockUntil) return;
+  const pw = $('#pw')?.value || '';
+  const h = await hashPw(pw);
+  if (h === S.auth.hash) { S.authed = true; S.fails = 0; S.loginErr = ''; render(); return; }
+  S.fails++;
+  if (S.fails >= 5) { S.lockUntil = Date.now() + 30000; S.fails = 0; S.loginErr = 'Too many attempts. Try again in 30 seconds.'; setTimeout(() => { S.loginErr = ''; if (S.tab === 'admin' && !S.authed) render(); }, 30000); }
+  else S.loginErr = 'That password is incorrect.';
+  render(); $('#pw')?.focus();
+}
+async function changePw() {
+  const a = $('#pw1').value, b = $('#pw2').value, msg = $('#pwmsg');
+  if (a.length < 10) { msg.className = 'small up'; msg.textContent = 'Use at least 10 characters.'; return; }
+  if (a !== b) { msg.className = 'small up'; msg.textContent = 'The two passwords don\'t match.'; return; }
+  const auth = { hash: await hashPw(a), isDefault: false };
+  if (!(await store.set(NS + 'auth', JSON.stringify(auth)))) { msg.className = 'small up'; msg.textContent = 'Could not save the password. Try again.'; return; }
+  S.auth = auth; $('#pw1').value = $('#pw2').value = ''; msg.className = 'small down'; msg.textContent = 'Password changed.';
+}
+async function saveUpload() {
+  const p = S.pending; if (!p) return;
+  const id = p.source.toLowerCase() + '-' + p.week;
+  const packed = JSON.stringify(pack(p.parsed.rows));
+  if (packed.length > 4.8e6) { S.upErr = `This file is too large to store (${(packed.length / 1e6).toFixed(1)} MB after parsing, limit about 4.8 MB). Split it, for example by tribe, and upload each part as a separate week entry.`; S.pending = null; render(); return; }
+  if (!(await store.set(NS + 'rows:' + id, packed))) { toast('Saving failed. Try again.'); return; }
+  const meta = { id, source: p.source, week: p.week, fileName: p.fileName, uploadedAt: new Date().toISOString(), rowCount: p.parsed.rows.length };
+  S.uploads = S.uploads.filter(u => u.id !== id); S.uploads.push({ ...meta, rows: p.parsed.rows });
+  await saveIndex();
+  S.isSample = false; S.D = null; S.pending = null; S.upErr = '';
+  toast(`Saved ${SOURCE_LABEL[p.source]} report for the week of ${fmtWeekLong(p.week)}`);
+  render();
+}
+async function deleteUpload(id) {
+  await store.del(NS + 'rows:' + id);
+  S.uploads = S.uploads.filter(u => u.id !== id); await saveIndex();
+  S.isSample = S.uploads.length === 0; S.D = null; toast('Upload deleted'); render();
+}
+async function wipeAll() {
+  for (const u of S.uploads) await store.del(NS + 'rows:' + u.id);
+  S.uploads = []; await saveIndex(); S.isSample = true; S.D = null; toast('All uploads deleted'); render();
+}
+async function saveRegistry() {
+  const reg = readRegistryForm().filter(e => e.apm || e.app);
+  const bad = reg.find(e => !/^APM\d{3,}$/.test(e.apm) || !e.app);
+  const dup = reg.find((e, i) => reg.findIndex(x => x.apm === e.apm) !== i);
+  const err = $('#regerr');
+  if (bad) { err.textContent = `Check ${bad.apm || 'the empty row'}: each row needs an ID like APM0101 and an application name.`; return; }
+  if (dup) { err.textContent = `${dup.apm} is listed twice.`; return; }
+  if (!(await store.set(NS + 'registry', JSON.stringify(reg)))) { err.textContent = 'Could not save. Try again.'; return; }
+  S.registry = reg; S.D = null; toast('Registry saved'); render();
+}
+
+/* =========================================================
+   Boot
+   ========================================================= */
+async function boot() {
+  S.mock = makeMock();
+  try {
+    const [idxRaw, regRaw, authRaw, layRaw, qfyRaw] = await Promise.all([store.get(NS + 'index'), store.get(NS + 'registry'), store.get(NS + 'auth'), store.get(NS + 'layout4'), store.get(NS + 'qfy')]);
+    S.qfy = qfyRaw === '1';
+    if (layRaw) { const l = JSON.parse(layRaw).filter(w => WIDGETS[w.id] && WIDGETS[w.id].sizes.includes(w.size)); S.layout = l.filter((w, i) => l.findIndex(x => x.id === w.id) === i); }
+    const idx = idxRaw ? JSON.parse(idxRaw) : [];
+    const rows = await Promise.all(idx.map(m => store.get(NS + 'rows:' + m.id)));
+    S.uploads = idx.map((m, i) => ({ ...m, rows: rows[i] ? unpack(JSON.parse(rows[i])) : [] })).filter(u => u.rows.length);
+    if (regRaw) S.registry = JSON.parse(regRaw);
+    S.auth = authRaw ? JSON.parse(authRaw) : null;
+  } catch (e) { console.error('Load failed', e); }
+  if (!S.auth) S.auth = { hash: await hashPw(DEFAULT_PW), isDefault: true };
+  S.isSample = S.uploads.length === 0;
+  $('#main').removeAttribute('aria-busy');
+  render();
+}
+boot();
+</script>
+</body>
+</html>
